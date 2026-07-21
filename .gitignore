@@ -22,3 +22,24 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+
+
+# Python 가상환경 & 캐시
+venv/
+**/venv/
+__pycache__/
+/**/__pycache__/
+*.pyc
+
+# 환경변수 (DB 접속 비밀번호, API 키 등)
+.env
+**/.env
+
+# IDE / 에디터 설정 파일
+.vscode/
+.idea/
+
+# OS 생성 파일
+.DS_Store
+Thumbs.db
