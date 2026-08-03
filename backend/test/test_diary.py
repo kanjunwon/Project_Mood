@@ -30,7 +30,6 @@ def test_generate_diary_success():
 
 
 def test_generate_diary_missing_field():
-    # 필수 필드(what) 빠뜨리면 422 에러 떠야 정상
     payload = {
         "why": "이유만 있음",
         "who": "혼자",
@@ -39,3 +38,12 @@ def test_generate_diary_missing_field():
     }
     response = client.post("/generate-diary", json=payload)
     assert response.status_code == 422
+
+
+def test_get_diaries_no_db():
+    # DB 연결 안 된 상태(테스트 환경)라 빈 목록이 정상 응답으로 와야 함 (에러 X)
+    response = client.get("/diaries/some-user-id")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["diaries"] == []

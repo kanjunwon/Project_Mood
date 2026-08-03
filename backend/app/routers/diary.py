@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.schemas.diary import DiaryRequest, DiaryResponse
 from app.services.llama_service import generate_diary_text
-from app.repositories.diary_repository import save_diary
+from app.repositories.diary_repository import save_diary, get_diary_by_user
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ def generate_diary(request: DiaryRequest):
             "why": request.why,
             "who": who_str,
             "when_": request.when,
-            "where_": request.where,  # SQL 예약어라 컬럼명이 where_ 임, 재유 테이블 스키마랑 맞춤
+            "where_": request.where,
             "generated_diary": diary_text,
             "validation_failed": failed,
         })
@@ -40,3 +40,13 @@ def generate_diary(request: DiaryRequest):
         generated_diary=diary_text,
         validation_failed=failed,
     )
+
+
+@router.get("/diaries/{user_id}")
+def get_diaries(user_id: str):
+    try:
+        diaries = get_diary_by_user(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"조회 중 오류 발생: {str(e)}")
+
+    return {"status": "success", "diaries": diaries}
