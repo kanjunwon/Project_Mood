@@ -17,7 +17,6 @@ def generate_diary(request: DiaryRequest):
             where=request.where,
         )
     except Exception as e:
-        # 모델 생성 중 뭔가 터져도 서버 전체가 죽지 않고, 프론트에 에러 메시지로 알려줌
         raise HTTPException(status_code=500, detail=f"일기 생성 중 오류 발생: {str(e)}")
 
     who_str = ", ".join(request.who) if isinstance(request.who, list) else request.who
@@ -29,11 +28,11 @@ def generate_diary(request: DiaryRequest):
             "why": request.why,
             "who": who_str,
             "when_": request.when,
-            "where": request.where,
+            "where_": request.where,  # SQL 예약어라 컬럼명이 where_ 임, 재유 테이블 스키마랑 맞춤
             "generated_diary": diary_text,
+            "validation_failed": failed,
         })
     except Exception as e:
-        # DB 저장 실패해도 일기 생성 자체는 이미 성공했으니, 응답은 그대로 내려줌
         print(f"DB 저장 실패 (일기 생성은 성공): {e}")
 
     return DiaryResponse(

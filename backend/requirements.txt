@@ -5,3 +5,5 @@ python-dotenv
 pydantic
 transformers
 torch
+pytest
+httpx
