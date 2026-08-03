@@ -1,7 +1,5 @@
 import os
 import re
-import torch
-from app.models.llama_loader import get_model_and_tokenizer
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
@@ -154,6 +152,9 @@ def build_prompt(actual_user_content: str) -> str:
 
 
 def _generate_once(prompt_str: str, temperature: float) -> str:
+    import torch
+    from app.models.llama_loader import get_model_and_tokenizer
+
     model, tokenizer = get_model_and_tokenizer()
     input_ids = tokenizer(prompt_str, return_tensors="pt")["input_ids"].to(model.device)
     with torch.no_grad():
@@ -173,7 +174,6 @@ def _generate_once(prompt_str: str, temperature: float) -> str:
 
 
 def _mock_generate(what: str) -> str:
-    # 실제 모델 대신 즉시 가짜 응답 리턴 (로컬 개발/API 테스트용)
     return f"오늘은 {what} 관련된 하루였다. 이건 목(mock) 응답이라 실제 생성된 건 아니다. 그래도 API 흐름 테스트용으로는 충분하다."
 
 
