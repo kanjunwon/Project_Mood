@@ -48,7 +48,7 @@ app/
 
 ## DB 스키마
 
-`supabase_schema.sql` 참고 - 재유가 Supabase SQL Editor에서 그대로 실행하면 됨.
+`supabase_schema.sql` 참고 - 재유가 Supabase SQL Editor에서 그대로 실행하면 됨
 
 ## 담당
 
