@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.schemas.diary import DiaryRequest, DiaryResponse
 from app.services.llama_service import generate_diary_text
+from app.services.kobert_service import analyze_emotion
 from app.repositories.diary_repository import save_diary, get_diary_by_user
 
 router = APIRouter()
@@ -21,6 +22,9 @@ def generate_diary(request: DiaryRequest):
 
     who_str = ", ".join(request.who) if isinstance(request.who, list) else request.who
 
+    # 일기 생성 직후 바로 감정 분석 -> 통계용 데이터로 같이 저장
+    emotion_result = analyze_emotion(diary_text)
+
     try:
         save_diary({
             "user_id": request.user_id,
@@ -31,6 +35,9 @@ def generate_diary(request: DiaryRequest):
             "where_": request.where,
             "generated_diary": diary_text,
             "validation_failed": failed,
+            "top_emotion": emotion_result["top_emotion"],
+            "emotion_scores": emotion_result["scores"],
+            "sentiment_score": emotion_result["sentiment_score"],
         })
     except Exception as e:
         print(f"DB 저장 실패 (일기 생성은 성공): {e}")
