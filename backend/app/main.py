@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # 다른 import보다 먼저 실행되어야 함 (환경변수가 뒤늦게 읽히는 버그 방지)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import diary, stats
