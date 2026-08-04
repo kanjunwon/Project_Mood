@@ -1,18 +1,24 @@
 from collections import Counter, defaultdict
+from app.emotion_taxonomy import EMOTION_CATEGORIES, SUB_TO_MID, get_valence
 
-# 프론트(종현)가 그래프 그릴 때 쓸 색상, 감정 카테고리랑 1:1로 고정
-EMOTION_COLORS = {
-    "기쁨": "#FFD93D",
-    "슬픔": "#4D96FF",
-    "분노": "#FF6B6B",
-    "불안": "#9B59B6",
-    "평온": "#6BCB77",
-    "놀람": "#FF9F45",
+# 재유가 정한 중분류(8개) 색상 - 색채심리학 기반
+MID_COLORS = {
+    "상승형": "#E4A4C2",
+    "활동형": "#FABE7D",
+    "해소형": "#8CDECE",
+    "안정형": "#C5E8A8",
+    "경계형": "#79BCE2",
+    "침체형": "#5071A9",
+    "소모형": "#957AA1",
+    "폭발형": "#B26D6D",
 }
+
+# 소분류(24개) 각각은 자기가 속한 중분류 색을 그대로 씀
+# SUB_TO_MID가 emotion_taxonomy.py에 있는 매핑 그대로라, 거기서 카테고리가 바뀌어도 자동으로 맞춰짐
+EMOTION_COLORS = {emotion: MID_COLORS[mid] for emotion, mid in SUB_TO_MID.items()}
 
 
 def _top_n_emotions(entries: list, n: int = 3) -> list:
-    # 여러 일기의 emotion_scores를 다 더해서 상위 n개 감정 뽑기
     total_scores = defaultdict(float)
     for entry in entries:
         scores = entry.get("emotion_scores") or {}
@@ -75,7 +81,6 @@ def compute_monthly_stats(entries: list, year: int, month: int) -> dict:
     top3 = _top_n_emotions(entries, n=3)
     top_emotion = top3[0]["emotion"] if top3 else None
 
-    # 날짜별로 묶어서(하루에 여러 개 있으면 평균) 감정 흐름 그래프용 데이터 만들기
     by_date = defaultdict(list)
     for entry in entries:
         created = entry.get("created_at", "")
@@ -86,14 +91,13 @@ def compute_monthly_stats(entries: list, year: int, month: int) -> dict:
     for date_str in sorted(by_date.keys()):
         day_entries = by_date[date_str]
         avg_sentiment = sum(e.get("sentiment_score", 0) or 0 for e in day_entries) / len(day_entries)
-        day_top3 = _top_n_emotions(day_entries, n=1)
+        day_top1 = _top_n_emotions(day_entries, n=1)
         emotion_flow.append({
             "date": date_str,
             "sentiment_score": round(avg_sentiment, 3),
-            "top_emotion": day_top3[0]["emotion"] if day_top3 else None,
+            "top_emotion": day_top1[0]["emotion"] if day_top1 else None,
         })
 
-    # 이번달 감정 분포(색상 포함) - 전체 감정 점수 합에서 비율 계산
     total_scores = defaultdict(float)
     for entry in entries:
         scores = entry.get("emotion_scores") or {}
@@ -105,15 +109,14 @@ def compute_monthly_stats(entries: list, year: int, month: int) -> dict:
             "emotion": emotion,
             "percentage": round(score / total_sum * 100, 1),
             "color": EMOTION_COLORS.get(emotion, "#CCCCCC"),
+            "valence": get_valence(emotion) if emotion in EMOTION_CATEGORIES else None,
         }
         for emotion, score in sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
     ]
 
-    # 가장 긍정적/부정적인 날
     most_positive_day = max(emotion_flow, key=lambda d: d["sentiment_score"])["date"] if emotion_flow else None
     most_negative_day = min(emotion_flow, key=lambda d: d["sentiment_score"])["date"] if emotion_flow else None
 
-    # 가장 많이 함께한 사람 + 그 사람과 느낀 감정
     companion_counter = Counter()
     companion_entries = defaultdict(list)
     for entry in entries:
@@ -134,7 +137,6 @@ def compute_monthly_stats(entries: list, year: int, month: int) -> dict:
             "top3_emotions": person_top3,
         }
 
-    # 가장 많이 방문한 장소 + 그곳에서 느낀 감정
     place_counter = Counter()
     place_entries = defaultdict(list)
     for entry in entries:
