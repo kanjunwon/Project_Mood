@@ -3,7 +3,7 @@ load_dotenv()  # 다른 import보다 먼저 실행되어야 함 (환경변수가
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import diary, stats
+from app.routers import diary, stats, personal_test 
 
 app = FastAPI(title="감정 서가 API")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 
 app.include_router(diary.router)
 app.include_router(stats.router)
+app.include_router(personal_test.router)
 
 
 @app.get("/")
