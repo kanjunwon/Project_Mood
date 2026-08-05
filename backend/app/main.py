@@ -3,7 +3,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import diary, stats, auth
+from app.routers import diary, stats, auth, personal_test
 
 app = FastAPI(title="감정 서가 API")
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(diary.router)
 app.include_router(stats.router)
 app.include_router(auth.router)
+app.include_router(personal_test.router)
 
 
 @app.get("/")
