@@ -1,9 +1,9 @@
 from dotenv import load_dotenv
-load_dotenv()  # 다른 import보다 먼저 실행되어야 함 (환경변수가 뒤늦게 읽히는 버그 방지)
+load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import diary, stats
+from app.routers import diary, stats, auth
 
 app = FastAPI(title="감정 서가 API")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 
 app.include_router(diary.router)
 app.include_router(stats.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

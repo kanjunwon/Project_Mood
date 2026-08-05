@@ -30,3 +30,17 @@ create index idx_diary_entries_created_at on diary_entries(created_at);
 -- alter table diary_entries add column top_emotion text;
 -- alter table diary_entries add column emotion_scores jsonb;
 -- alter table diary_entries add column sentiment_score float;
+
+
+-- users 테이블 (로그인/회원가입용)
+-- 재유가 정리하기로 한 예전 users 테이블 대신 새로 만드는 버전
+
+create table users (
+    id bigint generated always as identity primary key,
+    email text unique not null,
+    password_hash text not null,
+    nickname text,
+    created_at timestamp with time zone default now()
+);
+
+create index idx_users_email on users(email);

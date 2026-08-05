@@ -25,6 +25,7 @@ class EmotionDistributionItem(BaseModel):
     emotion: str
     percentage: float
     color: str
+    valence: Optional[str] = None
 
 
 class TopEntity(BaseModel):
