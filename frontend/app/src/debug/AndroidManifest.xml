@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 개발 중 로컬 서버(http)로 이미지/API 호출 테스트하기 위한 설정. release 빌드에는 적용 안 됨 -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>
