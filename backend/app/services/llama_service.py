@@ -84,6 +84,11 @@ RELATION_KEYWORDS = (
     "선배", "후배", "교수님", "사수", "팀장", "과장", "사장"
 )
 
+# 닫힌 목록들은 모델이 지어낼 수 있는 단어들
+# 아래의 단어들은 모델이 지어낼 수 있는 단어들이므로, 일기 검증 시 context_str에 없으면 지어낸 것으로 간주하고 걸러냄
+ALCOHOL_KEYWORDS = ("소주", "맥주", "막걸리", "와인", "폭탄주", "술")
+MEALTIME_KEYWORDS = ("아침", "점심", "저녁", "새벽")
+
 IMPLIED_RELATION_TRIGGERS = {
     "상담": ["교수님"], "진로": ["교수님"], "지도교수": ["교수님"],
     "회식": ["동료", "선배", "후배", "팀장", "과장", "사장", "사수"],
@@ -118,8 +123,8 @@ def expand_context(context_str: str) -> str:
     return context_str + " " + " ".join(extra)
 
 
-def has_invented_relation(text: str, context_str: str):
-    for kw in RELATION_KEYWORDS:
+def has_invented_word(text: str, context_str: str, keyword_list) -> str | None:
+    for kw in keyword_list:
         if kw in text and kw not in context_str:
             return kw
     return None
@@ -158,12 +163,22 @@ def validate_diary(text: str, context_str: str = ""):
     if not dahaeng_ok:
         reasons.append("다행 중복")
 
-    invented = has_invented_relation(text, context_str)
+    invented = has_invented_word(text, context_str, RELATION_KEYWORDS)
     relation_ok = invented is None
     if not relation_ok:
         reasons.append(f"관계 지어냄({invented})")
 
-    checks = [length_ok, count_ok, formal_ok, phrase_ok, cliche_ok, dahaeng_ok, relation_ok]
+    invented_alcohol = has_invented_word(text, context_str, ALCOHOL_KEYWORDS)
+    alcohol_ok = invented_alcohol is None
+    if not alcohol_ok:
+        reasons.append(f"술 지어냄({invented_alcohol})")
+
+    invented_meal = has_invented_word(text, context_str, MEALTIME_KEYWORDS)
+    meal_ok = invented_meal is None
+    if not meal_ok:
+        reasons.append(f"식사시간대 지어냄({invented_meal})")
+
+    checks = [length_ok, count_ok, formal_ok, phrase_ok, cliche_ok, dahaeng_ok, relation_ok, alcohol_ok, meal_ok]
     score = sum(checks)
     passed = all(checks)
     return passed, reasons, score
@@ -220,7 +235,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
 
     actual_user_content = f"무엇을: {what}\n이유: {why}\n누구와: {who_str}\n언제: {when}\n어디서: {where}"
     prompt_str = build_prompt(actual_user_content)
-    context_str = expand_context(f"{who_str} {what} {why}")
+    context_str = expand_context(f"{who_str} {what} {why} {when} {where}")
 
     clean_diary = ""
     best_candidate = ""
@@ -246,10 +261,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
             print(f"  {attempt}번째 시도 불합격 ({', '.join(reasons)}): {candidate[:60]}...")
 
     if not passed:
-        print(f"  경고: {MAX_RETRIES}번 다 실패, {best_score}/7 기준 통과한 후보로 저장됨")
-
-    if not passed:
-        print(f"  경고: {MAX_RETRIES}번 다 실패, 안전 템플릿으로 대체함 (최선 후보 점수 {best_score}/7)")
+        print(f"  경고: {MAX_RETRIES}번 다 실패, 안전 템플릿으로 대체함 (최선 후보 점수 {best_score}/9)")
         clean_diary = _safe_fallback_diary(what, why, who_str, when, where)
 
     return clean_diary, not passed
