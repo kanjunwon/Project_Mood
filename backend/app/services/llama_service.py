@@ -27,7 +27,10 @@ SYSTEM_PREAMBLE = (
     "6. 외래어 대신 순수 한국어를 쓴다.\n\n"
     "[쓰기 전에 마지막으로 확인]\n"
     "지금 쓰려는 문장에 위 다섯 가지 정보에 없는 음식 이름, 대화 내용, 시간, 장소 "
-    "디테일이 들어가려고 하면, 그 부분을 빼고 애매하게 돌려 말해라.\n"
+    "디테일이 들어가려고 하면, 그 부분을 빼고 애매하게 돌려 말해라.\n\n"
+    "[다시 한번 강조]\n"
+    "음식, 음료, 술, 정확한 시간대, 대화 내용 - 이런 건 절대로 지어내면 안 된다. "
+    "다섯 가지 정보에 문자 그대로 나와있지 않으면 존재하지 않는 것으로 취급해라.\n"
 )
 
 FEWSHOT_EXAMPLES = (
@@ -170,7 +173,8 @@ def build_prompt(actual_user_content: str) -> str:
     return (
         f"{SYSTEM_PREAMBLE}\n"
         f"{FEWSHOT_EXAMPLES}\n"
-        f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라:\n\n{actual_user_content}\n"
+        f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 "
+        f"(정보에 없는 음식/음료/시간/대화내용은 절대 지어내지 말 것):\n\n{actual_user_content}\n"
         f"Assistant:\n"
     )
 
@@ -201,6 +205,13 @@ def _mock_generate(what: str) -> str:
     return f"오늘은 {what} 관련된 하루였다. 이건 목(mock) 응답이라 실제 생성된 건 아니다. 그래도 API 흐름 테스트용으로는 충분하다."
 
 
+def _safe_fallback_diary(what: str, why: str, who_str: str, when: str, where: str) -> str:
+    # 5번 재시도해도 검증을 통과 못 하면, 모델이 만든 문장(지어낸 내용 남아있을 위험) 대신
+    # 입력 필드를 그대로 조합한 100% 안전한 문장으로 대체함.
+    # 문학적이진 않지만, 전시회에서 이상한 내용이 나올 위험은 완전히 없앰.
+    return f"오늘은 {where}에서 {what}. {why}. 그런 하루였다."
+
+
 def generate_diary_text(what: str, why: str, who, when: str, where: str):
     who_str = ", ".join(who) if isinstance(who, list) else who
 
@@ -217,7 +228,8 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
     passed = False
 
     for attempt in range(1, MAX_RETRIES + 1):
-        temp = max(0.35, 0.75 - (attempt - 1) * 0.1)
+        # 안전 최우선이라 temperature를 낮게 시작해서, 재시도할수록 더 보수적으로
+        temp = max(0.15, 0.45 - (attempt - 1) * 0.08)
         candidate = _generate_once(prompt_str, temperature=temp)
         is_ok, reasons, score = validate_diary(candidate, context_str=context_str)
 
@@ -237,6 +249,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
         print(f"  경고: {MAX_RETRIES}번 다 실패, {best_score}/7 기준 통과한 후보로 저장됨")
 
     if not passed:
-        clean_diary = best_candidate
+        print(f"  경고: {MAX_RETRIES}번 다 실패, 안전 템플릿으로 대체함 (최선 후보 점수 {best_score}/7)")
+        clean_diary = _safe_fallback_diary(what, why, who_str, when, where)
 
     return clean_diary, not passed
