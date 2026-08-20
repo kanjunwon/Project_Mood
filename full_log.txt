@@ -1,0 +1,31 @@
+--------- beginning of main
+08-20 13:10:13.373   890   890 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+08-20 13:10:14.879   545   860 D androidtc: Initializing SystemTextClassifier, type = System
+08-20 13:10:14.880  1758  1758 I AiAiTextClassifier: onCreateTextClassificationSession = TextClassificationSessionId {b0d8a565-f9b3-4ba8-9189-b145db32f7b3}
+08-20 13:10:14.881  1758  2108 I AiAiTranslate: C2T - not in a conversation
+08-20 13:10:14.881   890   890 I ClipboardListener: Clipboard overlay suppressed.
+08-20 13:10:14.883  1758  2164 I AiAiTextClassifier: GenerateLinks did not find valid links, returning empty result
+08-20 13:10:14.885   890   890 I ClipboardListener: Clipboard overlay suppressed.
+08-20 13:10:14.885  1758  2164 I AiAiTextClassifier: GenerateLinks did not find valid links, returning empty result
+08-20 13:10:15.681   545   816 D ConnectivityService: releasing NetworkRequest [ REQUEST id=149, [ Transports: CELLULAR Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&NOT_VCN_MANAGED Uid: 10131 RequestorUid: 10131 RequestorPkg: com.google.android.googlequicksearchbox UnderlyingNetworks: Null] ] (release request)
+08-20 13:10:15.681   545   816 I ConnectivityService: Update capabilities for net 100 : -FOREGROUND
+08-20 13:10:15.684   358   426 I netd    : networkSetPermissionForNetwork(100, 1) <2.68ms>
+--------- beginning of kernel
+08-20 13:08:25.784     0     0 I logd    : logdr: UID=2000 GID=2000 PID=6255 b tail=0 logMask=99 pid=0 start=0ns deadline=0ns
+08-20 13:10:18.607   545   860 D androidtc: Initializing SystemTextClassifier, type = System
+08-20 13:10:18.607  1758  1758 I AiAiTextClassifier: onCreateTextClassificationSession = TextClassificationSessionId {9ad1222f-594f-471e-80ef-1e0edc7035fe}
+08-20 13:10:18.609  1758  2108 I AiAiTranslate: C2T - not in a conversation
+08-20 13:10:18.609   890   890 I ClipboardListener: Clipboard overlay suppressed.
+08-20 13:10:18.611  1758  2164 I AiAiTextClassifier: GenerateLinks did not find valid links, returning empty result
+08-20 13:10:18.612   890   890 I ClipboardListener: Clipboard overlay suppressed.
+08-20 13:10:18.612  1758  2164 I AiAiTextClassifier: GenerateLinks did not find valid links, returning empty result
+08-20 13:10:19.252   873   873 I wpa_supplicant: wlan0: CTRL-EVENT-BEACON-LOSS 
+08-20 13:10:23.373   890   890 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+08-20 13:10:27.188   873   873 I wpa_supplicant: wlan0: CTRL-EVENT-BEACON-LOSS 
+08-20 13:10:28.675  1162  1162 D TaplEvents: TIS / TouchInteractionService.onInputEvent: MotionEvent { action=ACTION_DOWN, actionButton=0, id[0]=0, x[0]=158.99414, y[0]=599.98047, toolType[0]=TOOL_TYPE_FINGER, buttonState=0, classification=NONE, metaState=0, flags=0x0, edgeFlags=0x0, pointerCount=1, historySize=0, eventTime=597435, downTime=597435, deviceId=4, source=0x5002, displayId=0, eventId=693475519 }
+08-20 13:10:28.689  5806  5828 D EGL_emulation: app_time_stats: avg=16310.64ms min=5.09ms max=32616.19ms count=2
+08-20 13:10:28.762  1162  1162 D TaplEvents: TIS / TouchInteractionService.onInputEvent: MotionEvent { action=ACTION_UP, actionButton=0, id[0]=0, x[0]=158.99414, y[0]=599.98047, toolType[0]=TOOL_TYPE_FINGER, buttonState=0, classification=NONE, metaState=0, flags=0x0, edgeFlags=0x0, pointerCount=1, historySize=0, eventTime=597523, downTime=597435, deviceId=4, source=0x5002, displayId=0, eventId=877447348 }
+08-20 13:10:29.165   890   890 D StatusBarIconController: ignoring old pipeline callback because the new wifi icon is enabled
+08-20 13:10:29.250  1162  1162 D TaplEvents: TIS / TouchInteractionService.onInputEvent: MotionEvent { action=ACTION_DOWN, actionButton=0, id[0]=0, x[0]=156.99219, y[0]=597.96875, toolType[0]=TOOL_TYPE_FINGER, buttonState=0, classification=NONE, metaState=0, flags=0x0, edgeFlags=0x0, pointerCount=1, historySize=0, eventTime=598011, downTime=598011, deviceId=4, source=0x5002, displayId=0, eventId=485064383 }
+08-20 13:10:29.314  1162  1162 D TaplEvents: TIS / TouchInteractionService.onInputEvent: MotionEvent { action=ACTION_UP, actionButton=0, id[0]=0, x[0]=156.99219, y[0]=597.96875, toolType[0]=TOOL_TYPE_FINGER, buttonState=0, classification=NONE, metaState=0, flags=0x0, edgeFlags=0x0, pointerCount=1, historySize=0, eventTime=598075, downTime=598011, deviceId=4, source=0x5002, displayId=0, eventId=83171712 }
+08-20 13:10:29.689  5806  5828 D EGL_emulation: app_time_stats: avg=16.61ms min=3.76ms max=26.94ms count=60
