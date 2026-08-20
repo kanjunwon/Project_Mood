@@ -2,35 +2,49 @@
 
 ## 셋업
 
-```powershell
+```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+python -m venv .venv          # 또는 conda(base) 환경 그대로 사용해도 무방
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ## `.env` 만들기
 
-`backend` 폴더에 `.env` 파일 만들고 아래 내용 채우기 (`.env.example` 참고):
+`backend` 폴더에 `.env` 파일 만들고 채우기 (`.env.example` 참고):
 
 ```
-MOCK_MODE=true
+MOCK_MODE=false
 SUPABASE_URL=
 SUPABASE_KEY=
 HF_TOKEN=
 JWT_SECRET=
 ```
 
-- `MOCK_MODE=true`: 실제 AI 모델 없이 가짜 응답으로 API 테스트 가능 (로컬 개발용)
-- `SUPABASE_URL` / `SUPABASE_KEY`: 없어도 서버는 켜지고, DB 저장만 스킵됨
-- `HF_TOKEN`: Hugging Face 토큰 (MOCK_MODE=false로 실제 모델 쓸 때만 필요)
-- `JWT_SECRET`: 로그인 토큰 서명용 아무 랜덤 문자열 (로컬 개발 단계에선 아무 값이나 괜찮음)
+- `MOCK_MODE=true`: 실제 AI 모델(LLaMA/KoBERT) 없이 가짜 응답으로 API 테스트 (GPU 없는 환경에서 개발할 때 사용)
+- `MOCK_MODE=false`: 실제 모델 로딩, GPU 필요
+- `SUPABASE_URL` / `SUPABASE_KEY`: 재유한테 받은 값
+- `HF_TOKEN`: Hugging Face 토큰 (LLaMA 모델 다운로드용)
+- `JWT_SECRET`: 로그인 토큰 서명용 랜덤 문자열
+
+## KoBERT 모델 파일 준비 (git에는 코드만 있고, 가중치는 별도)
+
+1. 종현이가 공유한 구글드라이브에서 `emotion24_inference.zip` 다운로드
+2. 압축 풀고 안의 `model/emotion24-bert` 폴더를 `backend/kobert_model/emotion24-bert`로 복사
+3. `emotion_list.py`는 이미 `app/emotion_list.py`로 레포에 포함되어 있음 (모델 출력 순서 매핑용, 절대 수정 금지 - 학습 시 순서 그대로 유지해야 함)
+
+```bash
+mkdir -p kobert_model
+cp -r [압축 푼 경로]/model/emotion24-bert kobert_model/
+```
 
 ## 서버 실행
 
-```powershell
-python -m uvicorn app.main:app --reload
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+**`--reload` 옵션은 절대 쓰지 말 것.** 개발 중 재시도 로직이 여러 번 도는 상황에서 서버가 불안정해지는 원인으로 확인됨 (모델이 이미 GPU에 로딩된 상태에서 파일 변경 감지로 재시작되면서 응답이 끊기는 문제로 추정).
 
 `http://127.0.0.1:8000/docs` 에서 API 테스트 가능 (Swagger UI)
 
@@ -38,31 +52,33 @@ python -m uvicorn app.main:app --reload
 
 ```
 app/
-├── main.py                       # FastAPI 진입점 (CORS 설정 포함)
-├── config.py                     # 환경변수 로딩
-├── database.py                   # Supabase 클라이언트 (키 없으면 자동으로 DB 스킵 모드)
-├── emotion_taxonomy.py           # 24개 감정 분류 체계
-├── schemas/                       # API 요청/응답 형태
-│   ├── diary.py
+├── main.py                       # FastAPI 진입점 (CORS, load_dotenv 순서 주의)
+├── config.py
+├── database.py                   # Supabase 클라이언트 (키 없으면 DB 스킵 모드로 자동 전환)
+├── emotion_taxonomy.py           # 24개 감정 분류 체계 + 색상 팔레트 (재유)
+├── emotion_list.py               # KoBERT 모델 출력 ID→감정명 매핑 (종현, 수정 금지)
+├── schemas/
+│   ├── diary.py                  # DiaryResponse에 top_emotion/emotion_scores/sentiment_score 포함
 │   ├── stats.py
 │   ├── auth.py
 │   └── personal_test.py
-├── routers/                        # 엔드포인트
-│   ├── diary.py
+├── routers/
+│   ├── diary.py                  # 일기 생성 시 KoBERT 감정 분석도 같이 실행
 │   ├── stats.py
 │   ├── auth.py
 │   └── personal_test.py
-├── services/                        # AI 모델 / 비즈니스 로직
-│   ├── llama_service.py
-│   ├── kobert_service.py
-│   ├── ad3_service.py
-│   ├── stats_service.py
-│   └── auth_service.py
-├── models/                          # AI 모델 로더 (싱글톤)
-│   ├── llama_loader.py
-│   ├── kobert_loader.py
-│   └── ad3_loader.py
-└── repositories/                     # DB 읽기/쓰기
+├── services/
+│   ├── llama_service.py          # 호미 - 프롬프트, 검증, 안전 템플릿 폴백 포함
+│   ├── kobert_service.py         # 실제 24개 감정분류 모델 연동 완료
+│   ├── ad3_service.py            # (미사용, sd3_service.py로 대체)
+│   ├── sd3_service.py            # 재유 - ComfyUI API 호출 방식 (진행 중, 화풍 조정 중)
+│   ├── stats_service.py          # 호미
+│   └── auth_service.py           # 호미
+├── models/
+│   ├── llama_loader.py           # torch/transformers lazy import (Mock 모드에서 안 불림)
+│   ├── kobert_loader.py          # 마찬가지로 lazy import, cuda:1 고정
+│   └── sd3_loader.py             # ComfyUI 워크플로우 JSON 로더 (재유)
+└── repositories/
     ├── diary_repository.py
     ├── user_repository.py
     └── personal_test_repository.py
@@ -70,119 +86,77 @@ app/
 
 ## DB 스키마
 
-- `supabase_schema.sql`: `diary_entries` 테이블 (감정 분석 컬럼 포함)
-- `users_table.sql`: `users` 테이블 (로그인/회원가입용)
-- `personal_test_results` 테이블: (개인 검사용)
+- `supabase_schema.sql`: `diary_entries` (감정 분석 컬럼 포함)
+- `users_table.sql`: `users`
+- `personal_test_results`: 재유가 별도 생성
 
-**RLS는 전부 꺼둔 상태**로 운영 중. Supabase Auth가 아닌 자체 JWT 로그인 방식이라, 클라이언트가 Supabase를 직접 안 건드리고 항상 백엔드를 거쳐서만 DB에 접근함 → user_id 검증은 백엔드 코드가 전담.
-
-## 담당
-
-| 파일/폴더
-| -------------------------------------------------------------
-| `services/llama_service.py`, `models/llama_loader.py`
-| `services/kobert_service.py`, `models/kobert_loader.py`
-| `services/ad3_service.py`, `models/ad3_loader.py`
-| `services/stats_service.py`
-| `services/auth_service.py`, `repositories/user_repository.py`
-| `routers/personal_test.py` 등 관련 파일
-| DB 테이블 스키마 (Supabase)
-| 나머지 (main, 나머지 schemas/routers/repositories)
+**RLS는 전부 꺼둔 상태로 운영.** Supabase Auth가 아닌 자체 JWT 로그인 방식이라, 클라이언트가 Supabase를 직접 안 건드리고 항상 백엔드를 거쳐서만 DB에 접근함 → user_id 검증은 백엔드 코드가 전담. 새 테이블 만들 때마다 기본값이 RLS 켜짐이라 매번 꺼줘야 함:
+```sql
+alter table [테이블명] disable row level security;
+```
 
 ## API 엔드포인트
 
-### POST `/signup` — 회원가입
+### POST `/signup`, POST `/login`
+이메일/비밀번호 회원가입·로그인, JWT 토큰 발급
 
+### POST `/generate-diary`
 **Request**
-
 ```json
 {
-  "email": "test@example.com",
-  "password": "test1234",
-  "nickname": "테스트유저"
+  "what": "카페에서 과제 하기", "why": "...", "who": ["혼자"],
+  "when": "주말 오후 2시", "where": "집 앞 카페", "user_id": "선택사항"
 }
 ```
-
 **Response**
-
 ```json
 {
   "status": "success",
-  "access_token": "eyJ...",
-  "user_id": 1,
-  "nickname": "테스트유저"
-}
-```
-
-### POST `/login` — 로그인
-
-**Request**
-
-```json
-{ "email": "test@example.com", "password": "test1234" }
-```
-
-**Response**: `/signup`과 동일한 형태
-
-### POST `/generate-diary` — 일기 생성
-
-**Request**
-
-```json
-{
-  "what": "카페에서 과제 하기",
-  "why": "시험기간이라 집중해서 공부하려고",
-  "who": ["혼자"],
-  "when": "주말 오후 2시",
-  "where": "집 앞 카페",
-  "user_id": "선택사항"
-}
-```
-
-**Response**
-
-```json
-{
-  "status": "success",
-  "generated_diary": "주말 오후에...",
-  "validation_failed": false
-}
-```
-
-일기 생성 시 KoBERT 감정 분석도 같이 돌아가서, `top_emotion`/`emotion_scores`/`sentiment_score`까지 DB에 함께 저장됨.
-
-### GET `/diaries/{user_id}` — 일기 목록 조회
-
-### GET `/stats/daily/{user_id}?date=2026-08-03` — 일간 통계
-
-**Response**
-
-```json
-{
-  "date": "2026-08-03",
+  "generated_diary": "...",
+  "validation_failed": false,
   "top_emotion": "편안한",
-  "top3_emotions": [{"emotion": "편안한", "score": 0.6}, ...],
-  "companions": ["친구", "연인"],
-  "places": ["한강공원"]
+  "emotion_scores": { "행복한": 0.05, "편안한": 0.4, ... 24개 전부 },
+  "sentiment_score": 0.6
 }
 ```
+일기 생성 → KoBERT 감정 분석 → DB 저장까지 한 번에 처리됨.
 
-### GET `/stats/monthly/{user_id}?year=2026&month=8` — 월간 통계
+### GET `/diaries/{user_id}`
 
-**Response**
+### GET `/stats/daily/{user_id}?date=YYYY-MM-DD`, GET `/stats/monthly/{user_id}?year=&month=`
+24개 감정 기준 통계, `emotion_distribution`에 재유가 정한 8개 중분류 색상 자동 매핑됨
 
-```json
-{
-  "year": 2026, "month": 8,
-  "top_emotion": "평온",
-  "top3_emotions": [...],
-  "emotion_flow": [{"date": "2026-08-01", "sentiment_score": 0.7, "top_emotion": "행복한"}, ...],
-  "emotion_distribution": [{"emotion": "행복한", "percentage": 35.2, "color": "#E4A4C2", "valence": "긍정감정"}, ...],
-  "most_positive_day": "2026-08-01",
-  "most_negative_day": "2026-08-15",
-  "top_companion": {"name": "친구", "count": 5, "top3_emotions": [...]},
-  "top_place": {"name": "한강공원", "count": 3, "top3_emotions": [...]}
-}
+### POST `/personal-test`
+퍼스널 감정 검사(HSP 13문항 + LOT-R 6문항) 응답 제출. 결과는 사용자에게 노출하지 않고 내부 저장만 함 (`weight_profile` 계산 로직은 미완성, TODO로 남아있음).
+
+---
+
+## 트러블슈팅 노트 (겪었던 문제들, 다음에 또 겪지 않기 위한 기록)
+
+### "Name or service not known" / DB 저장 실패
+학교 네트워크가 Supabase 도메인을 막아둔 경우가 있음. `curl -I [SUPABASE_URL]`로 먼저 확인. 안 되면 핫스팟으로 네트워크 전환해서 재시도.
+
+### "521: Web server is down" (Supabase)
+Supabase 무료 플랜은 오래 안 쓰면 프로젝트가 자동으로 일시정지(Paused)됨. **프로젝트 소유자만 Restore 가능** (협업자 권한으로는 안 됨) - 재유한테 요청해야 함. Restore 후에도 DNS/서버가 완전히 뜨는 데 몇 분 걸릴 수 있음.
+
+### 안드로이드 앱 - 로컬 백엔드 연결
+- `ApiClient.kt`의 `BASE_URL`이 `10.0.2.2`(에뮬레이터 전용, 호스트 PC의 127.0.0.1을 가리킴)로 되어있으면 에뮬레이터에서만 작동
+- 실제 기기나 다른 PC에서 접속하려면 실제 네트워크 IP로 교체 필요 (`hostname -I` 또는 `ip route get 8.8.8.8`로 확인)
+- 학교 Wi-Fi는 기기 간 통신을 막아두는 경우(AP Isolation)가 많음 → 안 되면 핫스팟으로 우회
+- 방화벽 포트 개방 필요: `sudo ufw allow 8000`
+
+### 리눅스에서 Android 앱 빌드 (Android Studio 없이)
+```bash
+sudo apt install openjdk-17-jdk
+# Android SDK cmdline-tools 설치 후
+export ANDROID_HOME=~/android-sdk
+export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
+sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+cd frontend
+chmod +x gradlew   # 권한 없으면 빌드 자체가 안 됨
+./gradlew assembleDebug
 ```
+에뮬레이터가 필요하면 `system-images;android-34;google_apis;x86_64` 추가 설치 후 `avdmanager create avd`.
 
-`emotion_distribution`의 `color`는 중분류 색상 팔레트를 24개 소분류에 자동으로 매핑한 값. `valence`는 해당 감정의 대분류(긍정감정/부정감정).
+### 프론트-백엔드 연결 관련 (진행 중 이슈)
+`ApiClient`는 만들어져 있어도, 실제 화면(버튼 클릭 등)에서 `emotionApi.generateDiary(...)`를 호출하는 코드가 아직 연결 안 된 경우가 있었음. 코드에 API 클라이언트가 존재하는 것과, 실제로 호출되는 것은 다르니 `grep -rn "emotionApi\." app/src`로 실제 호출부가 있는지 확인 필요.
