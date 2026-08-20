@@ -201,25 +201,13 @@ def validate_diary(text: str, context_str: str = ""):
     return passed, reasons, score
 
 
-def build_restate_prompt(actual_user_content: str) -> str:
-    # 1단계: 본격적으로 쓰기 전에, 주어진 사실만 담백하게 한 번 되짚게 함
-    # (모델이 "지금 내가 아는 건 딱 이것뿐"이라는 상태로 다음 단계를 시작하게 유도)
-    return (
-        "A chat between a curious user and an artificial intelligence assistant.\n\n"
-        "Human: 아래 정보를 있는 그대로, 한 문장으로만 요약해라. 추측이나 새로운 내용은 "
-        f"절대 덧붙이지 마라.\n\n{actual_user_content}\n"
-        "Assistant:\n"
-    )
-
-
-def build_prompt(actual_user_content: str, restated_facts: str = "") -> str:
-    reminder = f"\n(방금 확인한 사실: {restated_facts})" if restated_facts else ""
+def build_prompt(actual_user_content: str) -> str:
     return (
         f"{SYSTEM_PREAMBLE}\n"
         f"{FEWSHOT_EXAMPLES}\n"
         f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 "
         f"(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것):\n\n"
-        f"{actual_user_content}{reminder}\n"
+        f"{actual_user_content}\n"
         f"Assistant:\n"
     )
 
@@ -261,12 +249,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
         return _mock_generate(what), False
 
     actual_user_content = f"무엇을: {what}\n이유: {why}\n누구와: {who_str}\n언제: {when}\n어디서: {where}"
-
-    # 1단계: 사실 되짚기 (낮은 온도로, 짧게)
-    restate_prompt = build_restate_prompt(actual_user_content)
-    restated_facts = _generate_once(restate_prompt, temperature=0.2, max_new_tokens=100)
-
-    prompt_str = build_prompt(actual_user_content, restated_facts=restated_facts)
+    prompt_str = build_prompt(actual_user_content)
     context_str = expand_context(f"{who_str} {what} {why} {when} {where}")
 
     clean_diary = ""
