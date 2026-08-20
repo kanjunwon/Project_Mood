@@ -1,86 +1,55 @@
-# app/services/kobert_service.py
-# 재유 담당 - KoBERT로 감정 분석하는 로직을 analyze_emotion() 안에 채우면 됨
-# 통계 기능이 이 함수의 리턴값에 의존하고 있어서, 반환 형태(키 이름들)는 절대 바꾸지 말고 그대로 유지 필수. 
-# 감정 카테고리(6개)도 이 목록 그대로 써야 통계 쪽 색상 매핑이랑 안 어긋남.
+import os
+
+from app.emotion_taxonomy import get_valence
+from app.emotion_list import ID_TO_EMOTION  # 종현이가 준 파일 - 모델 출력 순서(가나다순) 그대로 유지해야 함
+
+MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
 
-# EMOTION_CATEGORIES = ["기쁨", "슬픔", "분노", "불안", "평온", "놀람"]
-
-
-# def analyze_emotion(text: str) -> dict:
-#     """
-#     KoBERT로 감정 분석하는 함수 (재유가 실제 로직으로 교체)
-
-#     리턴 형태 (반드시 이 구조 유지):
-#     {
-#         "top_emotion": "기쁨",              # EMOTION_CATEGORIES 중 하나, 제일 강한 감정
-#         "scores": {                          # 6개 감정 전부에 대한 점수 (합이 1에 가깝게)
-#             "기쁨": 0.55,
-#             "슬픔": 0.05,
-#             "분노": 0.02,
-#             "불안": 0.08,
-#             "평온": 0.25,
-#             "놀람": 0.05
-#         },
-#         "sentiment_score": 0.6                # -1.0(완전 부정) ~ 1.0(완전 긍정) 사이 값
-#     }
-#     """
-#     # 지금은 더미 응답 (실제 모델 붙이기 전까지 통계 파이프라인 테스트용)
-#     return {
-#         "top_emotion": "평온",
-#         "scores": {
-#             "기쁨": 0.2, "슬픔": 0.1, "분노": 0.05,
-#             "불안": 0.1, "평온": 0.45, "놀람": 0.1
-#         },
-#         "sentiment_score": 0.3,
-#     }
-
-
-
-
-
-# app/services/kobert_service.py
-# 재유 담당 - KoBERT로 감정 분석하는 로직을 analyze_emotion() 안에 채우면 됨
-# 통계 기능이 이 함수의 리턴값에 의존하고 있어서, 반환 형태(키 이름들)는 절대 바꾸지 말고 그대로 유지 필수.
-# 감정 카테고리(24개)도 이 목록 그대로 써야 통계 쪽 색상 매핑이랑 안 어긋남.
-
-from app.emotion_taxonomy import EMOTION_CATEGORIES, get_valence
+def _mock_analyze() -> dict:
+    return {
+        "top_emotion": "평온",
+        "scores": {"편안한": 1.0},
+        "sentiment_score": 0.3,
+    }
 
 
 def analyze_emotion(text: str) -> dict:
     """
-    KoBERT로 감정 분석하는 함수 (재유가 실제 로직으로 교체)
+    KoBERT로 감정 분석. 종현이가 학습한 24개 소분류 모델 그대로 사용.
 
-    리턴 형태 (반드시 이 구조 유지):
+    리턴 형태 (통계 파이프라인이 이 구조에 의존하고 있어서 변경 금지):
     {
-        "top_emotion": "편안한",             # EMOTION_CATEGORIES 중 하나, 제일 강한 감정
-        "scores": {                          # 24개 감정 전부에 대한 점수 (합이 1에 가깝게)
-            "행복한": 0.05, "기쁜": 0.04, "기대되는": 0.03, "설레는": 0.03,
-            "신나는": 0.03, "열정적인": 0.02, "즐거운": 0.04,
-            "상쾌한": 0.03, "뿌듯한": 0.05, "후련한": 0.03,
-            "감사한": 0.06, "편안한": 0.22,
-            "우울한": 0.03, "실망한": 0.02, "후회되는": 0.02, "슬픈": 0.03,
-            "두려운": 0.02, "불안한": 0.08, "막막한": 0.02,
-            "피곤한": 0.06, "외로운": 0.03, "지루한": 0.03,
-            "화나는": 0.02, "짜증나는": 0.04
-        },
-        "sentiment_score": 0.3                # -1.0(완전 부정) ~ 1.0(완전 긍정) 사이 값
+        "top_emotion": "기쁜",
+        "scores": {"행복한": 0.05, "기쁜": 0.4, ..., 24개 전부},
+        "sentiment_score": -1.0 ~ 1.0 (긍정감정 확률 합 - 부정감정 확률 합)
     }
     """
-    # 지금은 더미 응답 (실제 모델 붙이기 전까지 통계 파이프라인 테스트용)
-    scores = {emotion: 0.0 for emotion in EMOTION_CATEGORIES}
-    scores.update({
-        "편안한": 0.22, "불안한": 0.08, "피곤한": 0.06, "감사한": 0.06,
-        "행복한": 0.05, "뿌듯한": 0.05, "짜증나는": 0.04, "즐거운": 0.04,
-        "기쁜": 0.04, "외로운": 0.03, "지루한": 0.03, "상쾌한": 0.03,
-        "후련한": 0.03, "기대되는": 0.03, "설레는": 0.03, "신나는": 0.03,
-        "우울한": 0.03, "슬픈": 0.03, "실망한": 0.02, "후회되는": 0.02,
-        "두려운": 0.02, "막막한": 0.02, "화나는": 0.02, "열정적인": 0.02,
-    })
+    if MOCK_MODE:
+        return _mock_analyze()
+
+    import torch
+    from app.models.kobert_loader import get_model_and_tokenizer, MAX_LEN
+
+    model, tokenizer, device = get_model_and_tokenizer()
+
+    enc = tokenizer(text, truncation=True, max_length=MAX_LEN, padding="max_length", return_tensors="pt")
+    enc = {k: v.to(device) for k, v in enc.items()}
+
+    with torch.no_grad():
+        logits = model(**enc).logits
+        probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
+
+    # ID_TO_EMOTION은 학습 시 순서(가나다순) 그대로라서, 이걸로만 디코딩해야 정확함
+    scores = {ID_TO_EMOTION[i]: float(probs[i]) for i in range(len(probs))}
     top_emotion = max(scores, key=scores.get)
+
+    positive_sum = sum(score for emotion, score in scores.items() if get_valence(emotion) == "긍정감정")
+    negative_sum = sum(score for emotion, score in scores.items() if get_valence(emotion) == "부정감정")
+    sentiment_score = round(positive_sum - negative_sum, 3)
 
     return {
         "top_emotion": top_emotion,
         "scores": scores,
-        "sentiment_score": 0.3 if get_valence(top_emotion) == "긍정감정" else -0.3,
+        "sentiment_score": sentiment_score,
     }
