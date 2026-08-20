@@ -104,6 +104,21 @@ IMPLIED_RELATION_TRIGGERS = {
 ALCOHOL_KEYWORDS = ("소주", "맥주", "막걸리", "와인", "폭탄주", "술")
 MEALTIME_KEYWORDS = ("아침", "점심", "저녁", "새벽")
 
+# "술", "형", "과장" 같은 짧은 키워드는 무관한 흔한 단어에도 다 포함돼서 오탐지가 잦음
+# (미술관, 인형, 과장해서 등) - 검사 전에 이런 단어들을 먼저 지워버리고 나서 진짜 매칭 확인
+FALSE_POSITIVE_EXCLUSIONS = {
+    "술": ["미술", "기술", "예술", "수술", "무술", "마술", "서술", "저술", "시술", "학술", "진술", "예술적", "미술관", "기술적"],
+    "형": ["인형", "모형", "유형", "형식", "형태", "전형", "변형", "원형", "지형", "체형", "선형", "도형", "균형", "조형", "정형외과", "삼각형", "사각형"],
+    "과장": ["과장해서", "과장이", "과장된", "좀 과장", "너무 과장", "과장해", "과장하면", "과장인가"],
+}
+
+
+def _mask_false_positives(text: str, keyword: str) -> str:
+    masked = text
+    for fp in FALSE_POSITIVE_EXCLUSIONS.get(keyword, []):
+        masked = masked.replace(fp, "")
+    return masked
+
 CLICHE_PATTERNS = (
     "덕분에 힘", "덕분에 이겨", "앞으로 살아갈 힘", "정말 소중", "말로 표현할 수",
     "마음이 따뜻해지는 것을 느꼈다", "환상적이었다", "마법처럼", "별처럼 빛나",
@@ -114,7 +129,7 @@ CLICHE_PATTERNS = (
 
 FORMAL_ENDING_PATTERN = re.compile(r'(요|습니다|ㅂ니다)[.!?]?$')
 
-MAX_RETRIES = 5
+MAX_RETRIES = 3  # 전시 당일 응답 속도 고려해서 5->3으로 낮춤 (대부분 1~2번 안에 통과하는 걸 확인함)
 
 
 def expand_context(context_str: str) -> str:
@@ -127,7 +142,8 @@ def expand_context(context_str: str) -> str:
 
 def has_invented_word(text: str, context_str: str, keyword_list) -> str | None:
     for kw in keyword_list:
-        if kw in text and kw not in context_str:
+        masked_text = _mask_false_positives(text, kw)
+        if kw in masked_text and kw not in context_str:
             return kw
     return None
 
@@ -259,7 +275,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
     passed = False
 
     for attempt in range(1, MAX_RETRIES + 1):
-        temp = max(0.15, 0.45 - (attempt - 1) * 0.08)
+        temp = max(0.15, 0.45 - (attempt - 1) * 0.15)
         candidate = _generate_once(prompt_str, temperature=temp)
         is_ok, reasons, score = validate_diary(candidate, context_str=context_str)
 
