@@ -8,9 +8,7 @@ SYSTEM_PREAMBLE = (
     "The assistant는 20대 대학생 본인이다. 그날 있었던 일을 그냥 편하게 적어두는 개인 일기를 쓴다.\n\n"
     "[가장 중요한 전제]\n"
     "너는 아래 다섯 가지 정보(무엇을, 이유, 누구와, 언제, 어디서) 외에는 그날 무슨 일이 "
-    "있었는지 전혀 모른다. 무슨 음식을 먹었는지, 무슨 얘기를 나눴는지, 정확히 몇 시에 "
-    "뭘 했는지 같은 세부사항은 너에게 안 알려져 있다. 모르는 건 모르는 대로 뭉뚱그려서 "
-    "써라 - 아는 척하며 구체적으로 채워 넣지 마라.\n\n"
+    "있었는지 모른다.\n\n"
     "[규칙]\n"
     "1. 반말 일기체로 쓴다. '~했다', '~하더라', '~잖아', '~하나' 등 자연스러운 어미를 "
     "섞어 쓴다. 존댓말은 절대 쓰지 않는다.\n"
@@ -20,17 +18,18 @@ SYSTEM_PREAMBLE = (
     "'세상을 다 가진 기분' 등). 그냥 있었던 일 적고 끝내거나 사소한 잡생각으로 "
     "끝나도 된다.\n"
     "3. 문장 길이를 들쭉날쭉하게 쓴다. 짧게 끊는 문장과 길게 이어지는 문장을 섞는다.\n"
-    "4. 분량은 정해진 게 없다. 줄 정보가 많으면 4~5문장도 되고, 정보가 적으면 "
-    "2~3문장으로 짧게 끝나도 전혀 상관없다. 분량을 채우려고 없는 내용을 "
-    "지어내는 것보다는 짧은 게 훨씬 낫다.\n"
-    "5. '다행이다/다행히'는 한 번 이상 쓰지 않는다.\n"
-    "6. 외래어 대신 순수 한국어를 쓴다.\n\n"
-    "[쓰기 전에 마지막으로 확인]\n"
-    "지금 쓰려는 문장에 위 다섯 가지 정보에 없는 음식 이름, 대화 내용, 시간, 장소 "
-    "디테일이 들어가려고 하면, 그 부분을 빼고 애매하게 돌려 말해라.\n\n"
-    "[다시 한번 강조]\n"
-    "음식, 음료, 술, 정확한 시간대, 대화 내용 - 이런 건 절대로 지어내면 안 된다. "
-    "다섯 가지 정보에 문자 그대로 나와있지 않으면 존재하지 않는 것으로 취급해라.\n"
+    "4. 분량은 정해진 게 없다. 정보가 적으면 2~3문장으로 짧게 끝나도 전혀 상관없다.\n"
+    "5. 디테일을 채울 땐 위험도를 구분해서 판단해라:\n"
+    "   - 괜찮음: 그 장소/상황에서 흔히 있는 배경 묘사 (예: 공원이면 사람들, 생일이면 케이크 정도의 "
+    "일반적인 소품) - 이 정도는 자연스러움을 위해 살짝 곁들여도 된다.\n"
+    "   - 절대 금지: 확인할 수 없는 결과나 판단(예: '시험을 잘 봤다', '다들 좋아했다'), 구체적인 "
+    "대화 내용, 술, 정확한 식사 시간대(아침/점심/저녁) - 이런 건 틀렸을 때 완전히 어색해지는 "
+    "내용이라 무슨 일이 있어도 지어내면 안 된다. 애매하게 돌려 말해라.\n"
+    "6. '다행이다/다행히'는 한 번 이상 쓰지 않는다.\n"
+    "7. 외래어 대신 순수 한국어를 쓴다.\n"
+    "8. '어디서' 정보를 그대로 따른다: '친구네 집'이면 내가 친구 집에 간 것이고, '본가'면 "
+    "내가 부모님 댁에 간 것이다. 절대 방향을 반대로 바꿔서 '친구가 우리 집에 왔다'처럼 "
+    "쓰지 않는다.\n"
 )
 
 FEWSHOT_EXAMPLES = (
@@ -71,7 +70,16 @@ FEWSHOT_EXAMPLES = (
     "어디서: 동네 카페\n"
     "Assistant:\n"
     "저녁에 동네 카페에서 오랜만에 걔를 만났다. 얼굴 본 지 꽤 됐는데 만나니까 어색함 하나 없었다. "
-    "몇 시간을 떠들었는지도 모르겠다. 다음에 또 이렇게 보자고 하고 헤어졌다.\n"
+    "몇 시간을 떠들었는지도 모르겠다. 다음에 또 이렇게 보자고 하고 헤어졌다.\n\n"
+    "Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라:\n\n"
+    "무엇을: 친구 생일 축하\n"
+    "이유: 친한 친구 생일이라 챙겨주고 싶어서\n"
+    "누구와: 친구\n"
+    "언제: 저녁\n"
+    "어디서: 친구네 집\n"
+    "Assistant:\n"
+    "친구 생일이라고 해서 저녁에 걔네 집으로 갔다. 다른 애들도 몇 명 와있었다. 다 같이 앉아서 "
+    "이런저런 얘기 나누다 보니 시간 가는 줄 몰랐다. 늦게까지 있다가 집으로 왔다.\n"
 )
 
 FORBIDDEN_PHRASES = (
@@ -84,11 +92,6 @@ RELATION_KEYWORDS = (
     "선배", "후배", "교수님", "사수", "팀장", "과장", "사장"
 )
 
-# 닫힌 목록들은 모델이 지어낼 수 있는 단어들
-# 아래의 단어들은 모델이 지어낼 수 있는 단어들이므로, 일기 검증 시 context_str에 없으면 지어낸 것으로 간주하고 걸러냄
-ALCOHOL_KEYWORDS = ("소주", "맥주", "막걸리", "와인", "폭탄주", "술")
-MEALTIME_KEYWORDS = ("아침", "점심", "저녁", "새벽")
-
 IMPLIED_RELATION_TRIGGERS = {
     "상담": ["교수님"], "진로": ["교수님"], "지도교수": ["교수님"],
     "회식": ["동료", "선배", "후배", "팀장", "과장", "사장", "사수"],
@@ -98,15 +101,14 @@ IMPLIED_RELATION_TRIGGERS = {
     "사수": ["사수", "선배"], "면접": ["면접관"],
 }
 
-# '~덕분에', '~을 선사했다' 계열 교훈형 마무리 + '최고의 하루' 같은 요약형 마무리 +
-# '하늘을 나는 것 같았다' 같은 과장 비유까지 걸러냄
+ALCOHOL_KEYWORDS = ("소주", "맥주", "막걸리", "와인", "폭탄주", "술")
+MEALTIME_KEYWORDS = ("아침", "점심", "저녁", "새벽")
+
 CLICHE_PATTERNS = (
     "덕분에 힘", "덕분에 이겨", "앞으로 살아갈 힘", "정말 소중", "말로 표현할 수",
     "마음이 따뜻해지는 것을 느꼈다", "환상적이었다", "마법처럼", "별처럼 빛나",
     "행복이었다", "힐링이 되었다", "위로가 되었다", "선사", "느꼈다는 걸", "라는 걸 느꼈다",
-    # 요약형 마무리 ("진짜 최고의 하루를 보낸 기분이었다" 같은 패턴)
     "최고의 하루", "최고의 순간", "잊지 못할", "평생 기억", "완벽한 하루",
-    # 과장된 신체 비유 ("하늘 위로 날아갈 것 같았다" 같은 패턴)
     "날아갈 것", "날아갈 듯", "터질 것 같았다", "구름 위", "세상을 다 가진",
 )
 
@@ -137,7 +139,6 @@ def validate_diary(text: str, context_str: str = ""):
     if not text:
         return False, ["empty"], 0
 
-    # 분량을 유연하게 풀었으니, 검증도 너무 짧거나(내용 없음) 너무 길면(폭주)만 걸러냄
     length_ok = 40 <= len(text) <= 200
     if not length_ok:
         reasons.append(f"길이={len(text)}자")
@@ -184,17 +185,30 @@ def validate_diary(text: str, context_str: str = ""):
     return passed, reasons, score
 
 
-def build_prompt(actual_user_content: str) -> str:
+def build_restate_prompt(actual_user_content: str) -> str:
+    # 1단계: 본격적으로 쓰기 전에, 주어진 사실만 담백하게 한 번 되짚게 함
+    # (모델이 "지금 내가 아는 건 딱 이것뿐"이라는 상태로 다음 단계를 시작하게 유도)
+    return (
+        "A chat between a curious user and an artificial intelligence assistant.\n\n"
+        "Human: 아래 정보를 있는 그대로, 한 문장으로만 요약해라. 추측이나 새로운 내용은 "
+        f"절대 덧붙이지 마라.\n\n{actual_user_content}\n"
+        "Assistant:\n"
+    )
+
+
+def build_prompt(actual_user_content: str, restated_facts: str = "") -> str:
+    reminder = f"\n(방금 확인한 사실: {restated_facts})" if restated_facts else ""
     return (
         f"{SYSTEM_PREAMBLE}\n"
         f"{FEWSHOT_EXAMPLES}\n"
         f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 "
-        f"(정보에 없는 음식/음료/시간/대화내용은 절대 지어내지 말 것):\n\n{actual_user_content}\n"
+        f"(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것):\n\n"
+        f"{actual_user_content}{reminder}\n"
         f"Assistant:\n"
     )
 
 
-def _generate_once(prompt_str: str, temperature: float) -> str:
+def _generate_once(prompt_str: str, temperature: float, max_new_tokens: int = 220) -> str:
     import torch
     from app.models.llama_loader import get_model_and_tokenizer
 
@@ -203,10 +217,10 @@ def _generate_once(prompt_str: str, temperature: float) -> str:
     with torch.no_grad():
         outputs = model.generate(
             input_ids=input_ids,
-            max_new_tokens=220,
+            max_new_tokens=max_new_tokens,
             do_sample=True,
             temperature=temperature,
-            top_p=0.9,
+            top_p=0.85,  # 0.9 -> 0.85로 낮춰서 극단적으로 튀는 단어 선택 확률 축소
             repetition_penalty=1.2,
             eos_token_id=tokenizer.eos_token_id,
             tokenizer=tokenizer,
@@ -221,9 +235,6 @@ def _mock_generate(what: str) -> str:
 
 
 def _safe_fallback_diary(what: str, why: str, who_str: str, when: str, where: str) -> str:
-    # 5번 재시도해도 검증을 통과 못 하면, 모델이 만든 문장(지어낸 내용 남아있을 위험) 대신
-    # 입력 필드를 그대로 조합한 100% 안전한 문장으로 대체함.
-    # 문학적이진 않지만, 전시회에서 이상한 내용이 나올 위험은 완전히 없앰.
     return f"오늘은 {where}에서 {what}. {why}. 그런 하루였다."
 
 
@@ -234,7 +245,12 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
         return _mock_generate(what), False
 
     actual_user_content = f"무엇을: {what}\n이유: {why}\n누구와: {who_str}\n언제: {when}\n어디서: {where}"
-    prompt_str = build_prompt(actual_user_content)
+
+    # 1단계: 사실 되짚기 (낮은 온도로, 짧게)
+    restate_prompt = build_restate_prompt(actual_user_content)
+    restated_facts = _generate_once(restate_prompt, temperature=0.2, max_new_tokens=100)
+
+    prompt_str = build_prompt(actual_user_content, restated_facts=restated_facts)
     context_str = expand_context(f"{who_str} {what} {why} {when} {where}")
 
     clean_diary = ""
@@ -243,7 +259,6 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
     passed = False
 
     for attempt in range(1, MAX_RETRIES + 1):
-        # 안전 최우선이라 temperature를 낮게 시작해서, 재시도할수록 더 보수적으로
         temp = max(0.15, 0.45 - (attempt - 1) * 0.08)
         candidate = _generate_once(prompt_str, temperature=temp)
         is_ok, reasons, score = validate_diary(candidate, context_str=context_str)

@@ -2,7 +2,7 @@ from pathlib import Path
 
 # kobert_model/emotion24-bert 폴더는 종현이가 준 model/emotion24-bert 그대로 복사한 것
 MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "kobert_model" / "emotion24-bert"
-MAX_LEN = 64
+MAX_LEN = 128  # 64였을 때 실제 일기(3~5문장)가 잘려서 뒷부분(긍정적 마무리 등)이 모델에 안 보이는 문제 발견, 늘림
 
 _tokenizer = None
 _model = None
