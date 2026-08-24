@@ -32,6 +32,7 @@ import com.gamjungseoga.app.screens.analysis.AnalysisScreen
 import com.gamjungseoga.app.screens.archive.ArchiveScreen
 import com.gamjungseoga.app.screens.diary.DiaryCompleteScreen
 import com.gamjungseoga.app.screens.diary.DiaryDateScreen
+import com.gamjungseoga.app.screens.diary.DiaryGenerationState
 import com.gamjungseoga.app.screens.diary.DiaryGeneratingScreen
 import com.gamjungseoga.app.screens.diary.DiaryQuestionScreen
 import com.gamjungseoga.app.screens.diary.DiaryViewModel
@@ -117,6 +118,7 @@ fun GamjeongseogaApp() {
                         onAnswerSelected = { value ->
                             emotionTestViewModel.selectAnswer(value)
                             if (emotionTestViewModel.currentIndex == emotionTestQuestions.lastIndex) {
+                                emotionTestViewModel.submitIfComplete()
                                 navController.popBackStack()
                             } else {
                                 emotionTestViewModel.goNext()
@@ -194,8 +196,10 @@ fun GamjeongseogaApp() {
                             onNext = { navController.navigate(Screen.DiaryGenerating.route) }
                         )
                     }
-                    composable(Screen.DiaryGenerating.route) {
+                    composable(Screen.DiaryGenerating.route) { entry ->
+                        val diaryViewModel: DiaryViewModel = entry.sharedDiaryViewModel(navController)
                         DiaryGeneratingScreen(
+                            diaryViewModel = diaryViewModel,
                             onComplete = {
                                 navController.navigate(Screen.DiaryComplete.route) {
                                     popUpTo(Screen.DiaryDate.route) { inclusive = true }
@@ -205,8 +209,10 @@ fun GamjeongseogaApp() {
                     }
                     composable(Screen.DiaryComplete.route) { entry ->
                         val diaryViewModel: DiaryViewModel = entry.sharedDiaryViewModel(navController)
+                        val generationState = diaryViewModel.generationState
                         DiaryCompleteScreen(
                             draft = diaryViewModel.draft,
+                            result = (generationState as? DiaryGenerationState.Success)?.response,
                             onBack = {
                                 navController.navigate(Screen.Home.route) {
                                     popUpTo(navController.graph.id) { inclusive = true }

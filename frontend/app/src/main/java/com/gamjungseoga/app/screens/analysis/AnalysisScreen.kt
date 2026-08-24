@@ -35,10 +35,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.gamjungseoga.app.network.ApiClient
+import com.gamjungseoga.app.network.DailyStatsResponse
+import com.gamjungseoga.app.network.EmotionScore
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -96,14 +100,26 @@ private enum class ReportTab(val label: String) { DAILY("일간"), MONTHLY("월�
 private val analysisDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
 private val analysisMonthFormatter = DateTimeFormatter.ofPattern("yyyy.MM")
 
-// TODO: 실제 데이터로 교체 (백엔드에서 날짜별 감정 통계 불러오기)
 data class TopEmotionBar(val label: String, val percent: Int, val barHeight: Dp, val color: Color)
 
-private val sampleTopEmotions = listOf(
-    TopEmotionBar("뿌듯한", 60, 138.dp, ChartMint),
-    TopEmotionBar("편안한", 30, 95.dp, AccentGreen),
-    TopEmotionBar("행복한", 10, 56.dp, RibbonPink)
-)
+private val dailyBarColors = listOf(ChartMint, AccentGreen, RibbonPink)
+private val dailyBarMaxHeight = 138.dp
+
+// GET /stats/daily의 top3_emotions는 그 날 여러 일기의 점수를 그냥 합산한 값이라(1.0 안 넘게
+// 정규화돼있지 않음) 3개 막대끼리 상대 비중으로 다시 나눠서 60/30/10 같은 퍼센트를 만듦
+private fun toTopEmotionBars(scores: List<EmotionScore>): List<TopEmotionBar> {
+    val total = scores.sumOf { it.score }
+    if (scores.isEmpty() || total <= 0) return emptyList()
+    return scores.mapIndexed { index, item ->
+        val percent = (item.score / total * 100).toInt().coerceIn(0, 100)
+        TopEmotionBar(
+            label = item.emotion,
+            percent = percent,
+            barHeight = dailyBarMaxHeight * (percent / 100f).coerceAtLeast(0.15f),
+            color = dailyBarColors[index % dailyBarColors.size]
+        )
+    }
+}
 
 // TODO: 실제 데이터로 교체 (백엔드에서 월별 감정 통계 불러오기)
 private val monthlyTopEmotions = listOf(
@@ -173,23 +189,6 @@ private val samplePlacePills = listOf(
     PillStat("불안한", 4, AccentPurple, PillPurpleBg)
 )
 
-// TODO: 실제 데이터로 교체 (백엔드에서 일간 감정 리포트 데이터 불러오기)
-data class DailyReportData(
-    val topEmotion: String,
-    val topEmotionPercent: Int,
-    val topEmotions: List<TopEmotionBar>,
-    val personLabel: String,
-    val placeLabel: String
-)
-
-private val sampleDailyReport = DailyReportData(
-    topEmotion = "뿌듯함",
-    topEmotionPercent = 60,
-    topEmotions = sampleTopEmotions,
-    personLabel = "친구",
-    placeLabel = "학교"
-)
-
 // TODO: 실제 데이터로 교체 (백엔드에서 월간 감정 리포트 데이터 불러오기)
 data class MonthlyReportData(
     val topEmotion: String,
@@ -231,14 +230,33 @@ private val sampleMonthlyReport = MonthlyReportData(
 
 @Composable
 fun AnalysisScreen(
-    // TODO: 백엔드 API 연동 후 ViewModel 등에서 실제 리포트 데이터를 받아 여기로 전달
-    dailyReport: DailyReportData = sampleDailyReport,
+    // TODO: 월간 리포트는 백엔드가 아직 주간 흐름/일별 감정 breakdown/사람·장소 전체 목록을
+    // 안 내려줘서 당장은 목업 유지 (GET /stats/monthly가 top_companion/top_place 각각 1개만 줌)
     monthlyReport: MonthlyReportData = sampleMonthlyReport
 ) {
     var selectedTab by remember { mutableStateOf(ReportTab.DAILY) }
-    var selectedDate by remember { mutableStateOf(LocalDate.of(2026, 6, 18)) }
-    var selectedMonth by remember { mutableStateOf(YearMonth.of(2026, 6)) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var showDatePicker by remember { mutableStateOf(false) }
+
+    var dailyStats by remember { mutableStateOf<DailyStatsResponse?>(null) }
+    var dailyLoading by remember { mutableStateOf(true) }
+    var dailyError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(selectedDate) {
+        dailyLoading = true
+        dailyError = null
+        try {
+            dailyStats = ApiClient.statsApi.getDailyStats(
+                userId = ApiClient.TEST_USER_ID,
+                date = selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+            )
+        } catch (e: Exception) {
+            dailyError = e.message ?: "통계를 불러오지 못했어요."
+        } finally {
+            dailyLoading = false
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -277,36 +295,69 @@ fun AnalysisScreen(
         }
 
         if (selectedTab == ReportTab.DAILY) {
-            item {
-                Spacer(Modifier.height(24.dp))
-                TodaySummaryCard(emotion = dailyReport.topEmotion, percent = dailyReport.topEmotionPercent)
-            }
-            item {
-                Spacer(Modifier.height(16.dp))
-                TopEmotionsCard(dailyReport.topEmotions)
-            }
-            item {
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    InfoCard(
-                        modifier = Modifier.weight(1f),
-                        iconRes = R.drawable.analysis_person_icon,
-                        prefix = "오늘 함께한 사람은",
-                        highlight = dailyReport.personLabel,
-                        suffix = "에요"
+            when {
+                dailyLoading -> item {
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "불러오는 중...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = BodyGray,
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
-                    InfoCard(
-                        modifier = Modifier.weight(1f),
-                        iconRes = R.drawable.analysis_location_icon,
-                        prefix = "오늘 방문한 장소는",
-                        highlight = dailyReport.placeLabel,
-                        suffix = "에요"
+                }
+                dailyError != null -> item {
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "통계를 불러오지 못했어요. (${dailyError})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = BodyGray,
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
+                }
+                dailyStats?.topEmotion == null -> item {
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "이 날 기록된 일기가 없어요.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = BodyGray,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+                else -> {
+                    val stats = dailyStats!!
+                    val bars = toTopEmotionBars(stats.top3Emotions)
+                    item {
+                        Spacer(Modifier.height(24.dp))
+                        TodaySummaryCard(emotion = stats.topEmotion ?: "-", percent = bars.firstOrNull()?.percent ?: 0)
+                    }
+                    item {
+                        Spacer(Modifier.height(16.dp))
+                        TopEmotionsCard(bars)
+                    }
+                    item {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            InfoCard(
+                                modifier = Modifier.weight(1f),
+                                iconRes = R.drawable.analysis_person_icon,
+                                prefix = "오늘 함께한 사람은",
+                                highlight = stats.companions.firstOrNull() ?: "기록 없음",
+                                suffix = "에요"
+                            )
+                            InfoCard(
+                                modifier = Modifier.weight(1f),
+                                iconRes = R.drawable.analysis_location_icon,
+                                prefix = "오늘 방문한 장소는",
+                                highlight = stats.places.firstOrNull() ?: "기록 없음",
+                                suffix = "에요"
+                            )
+                        }
+                    }
                 }
             }
         } else {

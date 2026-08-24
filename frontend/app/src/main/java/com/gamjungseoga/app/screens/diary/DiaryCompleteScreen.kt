@@ -44,21 +44,42 @@ import com.gamjungseoga.app.ui.theme.RibbonPink
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import androidx.compose.ui.unit.Dp
+import com.gamjungseoga.app.network.DiaryGenerateResponse
 
-// TODO: 실제 KoBERT 감정분석 결과로 교체 (sentiment/infer.py 서버 연동 전까지 목업)
 private data class DiaryEmotionBar(val label: String, val percent: Int, val barHeight: Dp, val color: Color)
 
-private val mockTopEmotion = "뿌듯함"
-private val mockTopEmotionPercent = 60
-private val mockEmotionBars = listOf(
+private val emotionBarColors = listOf(ChartMint, AccentGreen, RibbonPink)
+private val fallbackTopEmotion = "뿌듯함"
+private val fallbackTopEmotionPercent = 60
+private val fallbackEmotionBars = listOf(
     DiaryEmotionBar("뿌듯한", 60, 138.dp, ChartMint),
     DiaryEmotionBar("편안한", 30, 95.dp, AccentGreen),
     DiaryEmotionBar("행복한", 10, 56.dp, RibbonPink)
 )
+private val maxEmotionBarHeight = 138.dp
+
+// emotion_scores(감정별 0~1 점수)에서 상위 3개를 뽑아 막대그래프용 데이터로 변환.
+// 결과가 없으면(API 실패 등) fallback 목업으로 대체.
+private fun buildEmotionBars(scores: Map<String, Double>?): List<DiaryEmotionBar> {
+    if (scores.isNullOrEmpty()) return fallbackEmotionBars
+    val top3 = scores.entries.sortedByDescending { it.value }.take(3)
+    return top3.mapIndexed { index, (label, score) ->
+        val percent = (score * 100).toInt().coerceIn(0, 100)
+        DiaryEmotionBar(
+            label = label,
+            percent = percent,
+            barHeight = maxEmotionBarHeight * (percent / 100f).coerceAtLeast(0.15f),
+            color = emotionBarColors[index % emotionBarColors.size]
+        )
+    }
+}
 
 @Composable
-fun DiaryCompleteScreen(draft: DiaryDraft, onBack: () -> Unit) {
-    val diaryText = remember(draft) { buildMockDiaryText(draft) }
+fun DiaryCompleteScreen(draft: DiaryDraft, result: DiaryGenerateResponse?, onBack: () -> Unit) {
+    val diaryText = result?.generatedDiary?.takeIf { it.isNotBlank() } ?: remember(draft) { buildMockDiaryText(draft) }
+    val topEmotion = result?.topEmotion ?: fallbackTopEmotion
+    val emotionBars = remember(result) { buildEmotionBars(result?.emotionScores) }
+    val topEmotionPercent = emotionBars.firstOrNull()?.percent ?: fallbackTopEmotionPercent
     val whoDisplay = draft.who.firstOrNull() ?: draft.whoCustom.ifBlank { "혼자" }
     val whereDisplay = draft.where.ifBlank { "기록된 장소 없음" }
 
@@ -73,7 +94,7 @@ fun DiaryCompleteScreen(draft: DiaryDraft, onBack: () -> Unit) {
         }
         item {
             Spacer(Modifier.height(16.dp))
-            HeroImageWithTag()
+            HeroImageWithTag(topEmotion)
         }
         item {
             Spacer(Modifier.height(20.dp))
@@ -95,11 +116,11 @@ fun DiaryCompleteScreen(draft: DiaryDraft, onBack: () -> Unit) {
         }
         item {
             Spacer(Modifier.height(12.dp))
-            CompleteSummaryCard()
+            CompleteSummaryCard(topEmotion, topEmotionPercent)
         }
         item {
             Spacer(Modifier.height(16.dp))
-            CompleteTopEmotionsCard()
+            CompleteTopEmotionsCard(emotionBars)
         }
         item {
             Spacer(Modifier.height(16.dp))
@@ -150,7 +171,7 @@ private fun buildMockDiaryText(draft: DiaryDraft): String {
 }
 
 @Composable
-private fun HeroImageWithTag() {
+private fun HeroImageWithTag(topEmotion: String) {
     Box(modifier = Modifier.padding(horizontal = 16.dp)) {
         Image(
             painter = painterResource(R.drawable.header_illustration),
@@ -178,14 +199,14 @@ private fun HeroImageWithTag() {
                         .background(ChartMint, CircleShape)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(mockTopEmotion, style = MaterialTheme.typography.labelSmall, color = TitleBrown)
+                Text(topEmotion, style = MaterialTheme.typography.labelSmall, color = TitleBrown)
             }
         }
     }
 }
 
 @Composable
-private fun CompleteSummaryCard() {
+private fun CompleteSummaryCard(topEmotion: String, topEmotionPercent: Int) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         color = SurfaceColor,
@@ -206,7 +227,7 @@ private fun CompleteSummaryCard() {
                     text = buildAnnotatedString {
                         append("오늘 가장 많이 느낀 감정은\n")
                         withStyle(SpanStyle(color = HighlightMint, fontWeight = FontWeight.Bold)) {
-                            append(mockTopEmotion)
+                            append(topEmotion)
                         }
                         append("이에요")
                     },
@@ -215,7 +236,7 @@ private fun CompleteSummaryCard() {
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "전체 감정 중 ${mockTopEmotionPercent}%를 차지했어요",
+                    "전체 감정 중 ${topEmotionPercent}%를 차지했어요",
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = PretendardFontFamily),
                     color = BodyGray
                 )
@@ -225,7 +246,7 @@ private fun CompleteSummaryCard() {
 }
 
 @Composable
-private fun CompleteTopEmotionsCard() {
+private fun CompleteTopEmotionsCard(emotionBars: List<DiaryEmotionBar>) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         color = SurfaceColor,
@@ -251,7 +272,7 @@ private fun CompleteTopEmotionsCard() {
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.Bottom
             ) {
-                mockEmotionBars.forEach { bar ->
+                emotionBars.forEach { bar ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier

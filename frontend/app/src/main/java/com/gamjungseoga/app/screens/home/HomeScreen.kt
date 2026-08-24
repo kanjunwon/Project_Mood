@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
@@ -50,8 +51,15 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlin.math.abs
+import com.gamjungseoga.app.network.DiaryEntry
+import com.gamjungseoga.app.screens.diary.DiaryListState
+import com.gamjungseoga.app.screens.diary.DiaryListViewModel
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import com.gamjungseoga.app.ui.theme.AccentBlue
 import com.gamjungseoga.app.ui.theme.AccentGreen
 import com.gamjungseoga.app.ui.theme.AccentOrange
@@ -93,11 +101,19 @@ private val sampleMonthlyEmotions = listOf(
     MonthlyEmotion("4월의 감정", "편안한", "14회 기록", imageRes = R.drawable.emotion_card_3)
 )
 
-private val sampleDiaryPages = listOf(
-    DiaryPage("JUN", "10", PlaceholderOcean, showDateTag = true),
-    DiaryPage("JUN", "15", PlaceholderNavy, showDateTag = true),
-    DiaryPage("JUN", "20", PlaceholderTerracotta, showDateTag = true)
-)
+private val recentPageColors = listOf(PlaceholderOcean, PlaceholderNavy, PlaceholderTerracotta)
+private val recentPageDateFormatter = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)
+
+// SD3 생성 이미지(imageUrl)가 아직 없어서, 실제 일기 목록도 색상만 순환시켜 카드로 표시.
+private fun DiaryEntry.toDiaryPage(index: Int): DiaryPage {
+    val created = createdAt?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
+    return DiaryPage(
+        dateTop = created?.format(recentPageDateFormatter)?.uppercase(Locale.ENGLISH) ?: "-",
+        dateBottom = created?.dayOfMonth?.toString() ?: "-",
+        color = recentPageColors[index % recentPageColors.size],
+        showDateTag = true
+    )
+}
 
 // 가운데(현재 페이지) 기준 크기, 옆 페이지는 이 크기에서 축소됨
 private const val PAGE_CARD_MIN_SCALE = 0.73f
@@ -140,7 +156,15 @@ private fun centerScale(listState: LazyListState, index: Int): Float {
 }
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
+    val listState = diaryListViewModel.state
+    val recentPages = remember(listState) {
+        (listState as? DiaryListState.Loaded)?.diaries
+            ?.take(6)
+            ?.mapIndexed { index, entry -> entry.toDiaryPage(index) }
+            .orEmpty()
+    }
+
     // 배경(바탕색+텍스처)은 MainActivity의 전체 배경 레이어가 담당하므로 여기서는 따로 안 채움
     LazyColumn(
         modifier = Modifier.fillMaxSize()
@@ -166,23 +190,46 @@ fun HomeScreen() {
             Column(modifier = Modifier.padding(top = 28.dp, bottom = 20.dp)) {
                 SectionTitle("최근 작성한 페이지")
                 Spacer(Modifier.height(12.dp))
-                val pagesListState = rememberLazyListState()
-                val density = LocalDensity.current
-                BoxWithConstraints {
-                    val viewportWidthPx = with(density) { maxWidth.toPx() }
-                    val centerCardWidthPx = with(density) { PAGE_CARD_BASE_WIDTH.toPx() }
-                    // 화면 로드 시 가운데(현재 페이지, index 1)가 뷰포트 정중앙에 오도록 초기 스크롤 위치 계산
-                    LaunchedEffect(Unit) {
-                        val offsetPx = ((viewportWidthPx - centerCardWidthPx) / 2f).toInt()
-                        pagesListState.scrollToItem(index = 1, scrollOffset = -offsetPx)
-                    }
-                    LazyRow(
-                        state = pagesListState,
-                        contentPadding = PaddingValues(horizontal = 40.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        itemsIndexed(sampleDiaryPages) { index, page ->
-                            DiaryPageCard(page, index, pagesListState)
+                when {
+                    listState is DiaryListState.Loading -> Text(
+                        "불러오는 중...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MonthLabelGray,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    listState is DiaryListState.Error -> Text(
+                        "일기 목록을 불러오지 못했어요. (${listState.message})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MonthLabelGray,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    recentPages.isEmpty() -> Text(
+                        "아직 작성한 일기가 없어요.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MonthLabelGray,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    else -> {
+                        val pagesListState = rememberLazyListState()
+                        val density = LocalDensity.current
+                        BoxWithConstraints {
+                            val viewportWidthPx = with(density) { maxWidth.toPx() }
+                            val centerCardWidthPx = with(density) { PAGE_CARD_BASE_WIDTH.toPx() }
+                            // 화면 로드 시 가운데(현재 페이지, index 1)가 뷰포트 정중앙에 오도록 초기 스크롤 위치 계산
+                            LaunchedEffect(recentPages) {
+                                val centerIndex = (recentPages.size - 1).coerceAtMost(1)
+                                val offsetPx = ((viewportWidthPx - centerCardWidthPx) / 2f).toInt()
+                                pagesListState.scrollToItem(index = centerIndex, scrollOffset = -offsetPx)
+                            }
+                            LazyRow(
+                                state = pagesListState,
+                                contentPadding = PaddingValues(horizontal = 40.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                itemsIndexed(recentPages) { index, page ->
+                                    DiaryPageCard(page, index, pagesListState)
+                                }
+                            }
                         }
                     }
                 }

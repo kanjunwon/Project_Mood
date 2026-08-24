@@ -34,19 +34,29 @@ import com.gamjungseoga.app.ui.theme.TitleBrown
 import kotlinx.coroutines.delay
 
 @Composable
-fun DiaryGeneratingScreen(onComplete: () -> Unit) {
+fun DiaryGeneratingScreen(diaryViewModel: DiaryViewModel, onComplete: () -> Unit) {
     var progress by remember { mutableFloatStateOf(0f) }
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
         animationSpec = tween(durationMillis = 400, easing = LinearEasing),
         label = "diaryGeneratingProgress"
     )
+    val generationState = diaryViewModel.generationState
 
-    // TODO: 실제 감정분석 API 연동되면 진짜 진행률/완료 콜백으로 교체
+    // 화면 진입 시 실제로 POST /generate-diary 호출 (일기 생성 + KoBERT 감정분석)
     LaunchedEffect(Unit) {
-        progress = 1f
-        delay(2200)
-        onComplete()
+        progress = 0.6f
+        diaryViewModel.submitDiary()
+    }
+
+    // 응답이 오면(성공/실패 상관없이) 진행바를 채우고 잠깐 대기 후 다음 화면으로.
+    // 실패한 경우에도 여기서 막지 않고 넘어가서, 완료 화면 쪽에서 임시 텍스트로 대체 표시한다.
+    LaunchedEffect(generationState) {
+        if (generationState is DiaryGenerationState.Success || generationState is DiaryGenerationState.Error) {
+            progress = 1f
+            delay(500)
+            onComplete()
+        }
     }
 
     Column(

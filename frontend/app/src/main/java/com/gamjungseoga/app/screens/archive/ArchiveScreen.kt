@@ -1,6 +1,5 @@
 package com.gamjungseoga.app.screens.archive
 
-import com.gamjungseoga.app.R
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,42 +39,46 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamjungseoga.app.components.WheelPicker
+import com.gamjungseoga.app.emotion.drawableForEmotion
+import com.gamjungseoga.app.network.DiaryEntry
+import com.gamjungseoga.app.screens.diary.DiaryListState
+import com.gamjungseoga.app.screens.diary.DiaryListViewModel
+import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
+import java.time.OffsetDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-// TODO: 실제 데이터로 교체 (백엔드에서 감정 기록 목록 불러오기)
-private data class ArchiveEntry(
-    val title: String,
-    val date: String,
-    val imageRes: Int
-)
-
-private val sampleArchiveEntries = listOf(
-    ArchiveEntry("행복했던 날", "2026.06.14", R.drawable.archive_happy),
-    ArchiveEntry("편안했던 날", "2026.05.10", R.drawable.archive_comfortable),
-    ArchiveEntry("후련했던 날", "2026.06.14", R.drawable.archive_relieved),
-    ArchiveEntry("즐거웠던 날", "2026.06.04", R.drawable.archive_joyful),
-    ArchiveEntry("피곤했던 날", "2026.06.11", R.drawable.archive_tired),
-    ArchiveEntry("우울했던 날", "2026.05.23", R.drawable.archive_depressed),
-    ArchiveEntry("화났던 날", "2026.06.09", R.drawable.archive_angry),
-    ArchiveEntry("불안했던 날", "2026.05.14", R.drawable.archive_anxious)
-)
-
 private val archiveHeaderDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM")
+private val archiveCardDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
+
+// created_at은 Supabase가 ISO 8601(timestamptz)로 내려줌. 파싱 실패하면 원본 앞 10자리로 대체.
+private fun formatArchiveDate(createdAt: String?): String {
+    if (createdAt == null) return ""
+    return try {
+        OffsetDateTime.parse(createdAt).format(archiveCardDateFormatter)
+    } catch (_: Exception) {
+        createdAt.take(10).replace("-", ".")
+    }
+}
+
+private fun archiveTitle(entry: DiaryEntry): String =
+    entry.topEmotion?.let { "${it} 날" } ?: "기록한 날"
 
 @Composable
-fun ArchiveScreen() {
+fun ArchiveScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
     // 날짜 선택은 헤더에 표시되는 라벨만 바꾸고, 목록 자체는 필터링하지 않음
     // (피그마 디자인도 5월/6월 기록이 한 그리드에 같이 보이는 구조 - 실제 월별
-    // 페이지네이션은 백엔드 연동 후 붙이기)
-    var selectedYearMonth by remember { mutableStateOf(YearMonth.of(2026, 6)) }
+    // 페이지네이션은 다음 단계에서 붙이기)
+    var selectedYearMonth by remember { mutableStateOf(YearMonth.now()) }
     var showDatePicker by remember { mutableStateOf(false) }
+    val listState = diaryListViewModel.state
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -90,8 +93,28 @@ fun ArchiveScreen() {
                 onDateClick = { showDatePicker = true }
             )
         }
-        items(sampleArchiveEntries) { entry ->
-            ArchiveCard(entry)
+        when (listState) {
+            is DiaryListState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("불러오는 중...", style = MaterialTheme.typography.bodyMedium, color = MonthLabelGray)
+            }
+            is DiaryListState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "일기 목록을 불러오지 못했어요. (${listState.message})",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = BodyGray
+                )
+            }
+            is DiaryListState.Loaded -> {
+                if (listState.diaries.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text("아직 기록한 일기가 없어요.", style = MaterialTheme.typography.bodyMedium, color = MonthLabelGray)
+                    }
+                } else {
+                    items(listState.diaries) { entry ->
+                        ArchiveCard(entry)
+                    }
+                }
+            }
         }
     }
 
@@ -128,11 +151,12 @@ private fun ArchiveHeader(yearMonth: YearMonth, onDateClick: () -> Unit) {
 }
 
 @Composable
-private fun ArchiveCard(entry: ArchiveEntry) {
+private fun ArchiveCard(entry: DiaryEntry) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Image(
-            painter = painterResource(entry.imageRes),
-            contentDescription = entry.title,
+            // SD3 생성 이미지가 붙기 전까지는 top_emotion 기준으로 가장 가까운 기존 일러스트로 대체
+            painter = painterResource(drawableForEmotion(entry.topEmotion)),
+            contentDescription = archiveTitle(entry),
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
@@ -140,8 +164,8 @@ private fun ArchiveCard(entry: ArchiveEntry) {
                 .clip(RoundedCornerShape(9.dp))
         )
         Spacer(Modifier.height(10.dp))
-        Text(entry.title, style = MaterialTheme.typography.titleSmall, color = TitleBrown)
-        Text(entry.date, style = MaterialTheme.typography.labelSmall, color = MonthLabelGray)
+        Text(archiveTitle(entry), style = MaterialTheme.typography.titleSmall, color = TitleBrown)
+        Text(formatArchiveDate(entry.createdAt), style = MaterialTheme.typography.labelSmall, color = MonthLabelGray)
     }
 }
 
