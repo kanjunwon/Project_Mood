@@ -40,6 +40,9 @@ def generate_diary(request: DiaryRequest):
             image_url = generate_diary_image(
                 diary_text=diary_text,
                 top_emotion=emotion_result.get("top_emotion") or "편안한",
+                who=request.who,
+                where=request.where,
+                when=request.when,
             )
         except Exception as e:
             print(f"이미지 생성 실패 (일기 생성은 성공): {e}")
