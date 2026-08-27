@@ -18,3 +18,4 @@ class DiaryResponse(BaseModel):
     top_emotion: Optional[str] = None
     emotion_scores: Optional[Dict[str, float]] = None
     sentiment_score: Optional[float] = None
+    image_url: Optional[str] = None  # SD3로 생성된 그림일기 이미지, 실패하거나 MOCK_MODE면 None
