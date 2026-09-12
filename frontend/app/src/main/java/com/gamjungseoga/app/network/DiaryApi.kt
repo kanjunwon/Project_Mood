@@ -20,8 +20,7 @@ data class DiaryGenerateRequest(
     val why: String,
     val who: List<String>,
     @SerializedName("when") val whenText: String,
-    val where: String,
-    @SerializedName("user_id") val userId: String? = null
+    val where: String
 )
 
 data class DiaryGenerateResponse(
