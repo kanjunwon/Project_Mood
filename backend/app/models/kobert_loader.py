@@ -16,11 +16,15 @@ def get_model_and_tokenizer():
         import torch
         from transformers import AutoTokenizer, BertForSequenceClassification
 
-        # LLaMA가 cuda:0 쓰고 있으니까 KoBERT는 다른 GPU로 분리
-        # (KoBERT는 용량 작아서 사실 같은 GPU에 껴도 되지만, 명확하게 분리해두는 게 안전함)
-        _device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        # LLaMA가 cuda:0 쓰니까 GPU 2개 이상인 환경(학교 서버)에선 KoBERT를 cuda:1로 분리.
+        # GPU 1개짜리 환경(RunPod 등)에서는 cuda:1이 존재하지 않아 "invalid device ordinal" 에러가
+        # 나는 걸 2026-09-14 RunPod 테스트에서 확인 -> GPU 개수를 실제로 확인해서 자동으로 맞추도록 수정.
+        if torch.cuda.is_available():
+            _device = torch.device("cuda:1" if torch.cuda.device_count() > 1 else "cuda:0")
+        else:
+            _device = torch.device("cpu")
 
-        print("KoBERT(24개 감정분류) 모델 로딩 중... (최초 1회만)")
+        print(f"KoBERT(24개 감정분류) 모델 로딩 중... (최초 1회만, device={_device})")
         _tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR))
         _model = BertForSequenceClassification.from_pretrained(str(MODEL_DIR))
         _model.to(_device)

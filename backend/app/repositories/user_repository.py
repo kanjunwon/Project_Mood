@@ -28,7 +28,8 @@ def get_user_by_id(user_id: int):
     return response.data[0] if response.data else None
 
 
-def update_profile(user_id: int, glasses: bool, bangs: bool, hair_length: str, hair_color: str):
+def update_profile(user_id: int, glasses: str, bangs: bool, hair_length: str, hair_color: str):
+    "glasses: 'horn_rimmed' | 'round' | 'none'"
     if supabase is None:
         return None
     response = (

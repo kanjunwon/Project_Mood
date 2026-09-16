@@ -14,7 +14,7 @@ def get_my_profile(user_id: int = Depends(get_current_user_id)):
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
     return ProfileResponse(
         status="success",
-        glasses=user.get("glasses", False),
+        glasses=user.get("glasses") or "none",
         bangs=user.get("bangs", True),
         hair_length=user.get("hair_length", "medium"),
         hair_color=user.get("hair_color", "black"),
