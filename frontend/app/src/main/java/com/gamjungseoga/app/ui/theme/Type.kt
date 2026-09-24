@@ -37,15 +37,26 @@ val SCoreDreamFontFamily = FontFamily(
     Font(R.font.scdream_black, FontWeight.Black)
 )
 
+// 머티리얼 기본 Typography(크기/줄간격/자간 등)를 기준으로 fontFamily만 OmyuPretty로 바꿔둔
+// 슬롯들. 아래 다섯 개(headlineSmall~labelSmall)를 제외한 나머지 슬롯을 안 쓰던 화면(로그인/
+// 회원가입 등)에서 그대로 쓰면 머티리얼 기본 폰트(Roboto)로 보이는 문제가 있어서 채워둠.
+private val materialDefaultTypography = Typography()
+
 // 피그마 "메인" 화면 기준 확정된 폰트 크기 (Omyu Pretty, 전부 Regular 웨이트)
 // 행간은 폰트 크기 + 2sp로 통일 (전체적으로 행간이 너무 빡빡하다는 피드백 반영)
 val Typography = Typography(
+    displayLarge = materialDefaultTypography.displayLarge.copy(fontFamily = OmyuPrettyFontFamily),
+    displayMedium = materialDefaultTypography.displayMedium.copy(fontFamily = OmyuPrettyFontFamily),
+    displaySmall = materialDefaultTypography.displaySmall.copy(fontFamily = OmyuPrettyFontFamily),
+    headlineLarge = materialDefaultTypography.headlineLarge.copy(fontFamily = OmyuPrettyFontFamily),
+    headlineMedium = materialDefaultTypography.headlineMedium.copy(fontFamily = OmyuPrettyFontFamily),
     headlineSmall = TextStyle(
         fontFamily = OmyuPrettyFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 24.sp,
         lineHeight = 32.sp
     ),
+    titleLarge = materialDefaultTypography.titleLarge.copy(fontFamily = OmyuPrettyFontFamily),
     titleMedium = TextStyle(
         fontFamily = OmyuPrettyFontFamily,
         fontWeight = FontWeight.Normal,
@@ -58,12 +69,16 @@ val Typography = Typography(
         fontSize = 16.sp,
         lineHeight = 18.sp
     ),
+    bodyLarge = materialDefaultTypography.bodyLarge.copy(fontFamily = OmyuPrettyFontFamily),
     bodyMedium = TextStyle(
         fontFamily = OmyuPrettyFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 18.sp
     ),
+    bodySmall = materialDefaultTypography.bodySmall.copy(fontFamily = OmyuPrettyFontFamily),
+    labelLarge = materialDefaultTypography.labelLarge.copy(fontFamily = OmyuPrettyFontFamily),
+    labelMedium = materialDefaultTypography.labelMedium.copy(fontFamily = OmyuPrettyFontFamily),
     labelSmall = TextStyle(
         fontFamily = OmyuPrettyFontFamily,
         fontWeight = FontWeight.Normal,

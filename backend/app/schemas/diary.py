@@ -8,7 +8,7 @@ class DiaryRequest(BaseModel):
     who: Union[str, List[str]]
     when: str
     where: str
-    user_id: Optional[str] = None
+    # user_id는 더 이상 여기 안 받음 - 로그인 토큰(Authorization 헤더)에서만 가져옴
 
 
 class DiaryResponse(BaseModel):

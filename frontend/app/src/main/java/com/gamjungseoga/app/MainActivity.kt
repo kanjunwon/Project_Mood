@@ -30,6 +30,11 @@ import com.gamjungseoga.app.components.BottomNavBar
 import com.gamjungseoga.app.navigation.Screen
 import com.gamjungseoga.app.screens.analysis.AnalysisScreen
 import com.gamjungseoga.app.screens.archive.ArchiveScreen
+import com.gamjungseoga.app.screens.auth.LoginScreen
+import com.gamjungseoga.app.screens.auth.SignupEmailScreen
+import com.gamjungseoga.app.screens.auth.SignupNicknameScreen
+import com.gamjungseoga.app.screens.auth.SignupPasswordScreen
+import com.gamjungseoga.app.screens.auth.SignupViewModel
 import com.gamjungseoga.app.screens.diary.DiaryCompleteScreen
 import com.gamjungseoga.app.screens.diary.DiaryDateScreen
 import com.gamjungseoga.app.screens.diary.DiaryGenerationState
@@ -42,7 +47,12 @@ import com.gamjungseoga.app.screens.emotiontest.EmotionTestScreen
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestViewModel
 import com.gamjungseoga.app.screens.emotiontest.emotionTestQuestions
 import com.gamjungseoga.app.screens.home.HomeScreen
+import com.gamjungseoga.app.screens.settings.BirthDateScreen
+import com.gamjungseoga.app.screens.settings.GenderScreen
+import com.gamjungseoga.app.screens.settings.JobScreen
+import com.gamjungseoga.app.screens.settings.PasswordChangeScreen
 import com.gamjungseoga.app.screens.settings.SettingsScreen
+import com.gamjungseoga.app.screens.settings.SettingsViewModel
 import com.gamjungseoga.app.ui.theme.BackgroundColor
 import com.gamjungseoga.app.ui.theme.GamjeongseogaTheme
 
@@ -106,7 +116,57 @@ fun GamjeongseogaApp() {
                 composable(Screen.Archive.route) { ArchiveScreen() }
                 composable(Screen.Analysis.route) { AnalysisScreen() }
                 composable(Screen.Settings.route) {
-                    SettingsScreen(onEmotionTestClick = { navController.navigate(Screen.EmotionTest.route) })
+                    SettingsScreen(
+                        onEmotionTestClick = { navController.navigate(Screen.EmotionTest.route) },
+                        onLoginScreenClick = { navController.navigate(Screen.Login.route) },
+                        onGenderChangeClick = { navController.navigate(Screen.GenderChange.route) },
+                        onJobChangeClick = { navController.navigate(Screen.JobChange.route) },
+                        onBirthDateChangeClick = { navController.navigate(Screen.BirthDateChange.route) },
+                        onPasswordChangeClick = { navController.navigate(Screen.PasswordChange.route) }
+                    )
+                }
+                composable(Screen.GenderChange.route) { entry ->
+                    val settingsViewModel = entry.sharedSettingsViewModel(navController)
+                    GenderScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = {
+                            // 값이 바뀌었으니 설정 화면으로 돌아갔을 때 최신 계정 정보가 보이도록 다시 불러옴.
+                            settingsViewModel.loadAccount()
+                            navController.popBackStack()
+                        }
+                    )
+                }
+                composable(Screen.JobChange.route) { entry ->
+                    val settingsViewModel = entry.sharedSettingsViewModel(navController)
+                    JobScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = {
+                            settingsViewModel.loadAccount()
+                            navController.popBackStack()
+                        }
+                    )
+                }
+                composable(Screen.BirthDateChange.route) { entry ->
+                    val settingsViewModel = entry.sharedSettingsViewModel(navController)
+                    BirthDateScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = {
+                            settingsViewModel.loadAccount()
+                            navController.popBackStack()
+                        }
+                    )
+                }
+                composable(Screen.PasswordChange.route) {
+                    PasswordChangeScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.Login.route) {
+                    LoginScreen(
+                        onSignupClick = { navController.navigate(Screen.SignupGraph.route) },
+                        onLoginSuccess = { navController.popBackStack() }
+                    )
                 }
                 composable(Screen.EmotionTest.route) {
                     val emotionTestViewModel: EmotionTestViewModel = viewModel()
@@ -128,6 +188,43 @@ fun GamjeongseogaApp() {
                         onPrev = emotionTestViewModel::goPrev,
                         onNext = emotionTestViewModel::goNext
                     )
+                }
+
+                navigation(startDestination = Screen.SignupEmail.route, route = Screen.SignupGraph.route) {
+                    composable(Screen.SignupEmail.route) { entry ->
+                        val signupViewModel: SignupViewModel = entry.sharedSignupViewModel(navController)
+                        SignupEmailScreen(
+                            email = signupViewModel.draft.email,
+                            onEmailChange = signupViewModel::setEmail,
+                            onBack = { navController.popBackStack() },
+                            onNext = { navController.navigate(Screen.SignupPassword.route) }
+                        )
+                    }
+                    composable(Screen.SignupPassword.route) { entry ->
+                        val signupViewModel: SignupViewModel = entry.sharedSignupViewModel(navController)
+                        SignupPasswordScreen(
+                            password = signupViewModel.draft.password,
+                            passwordConfirm = signupViewModel.draft.passwordConfirm,
+                            onPasswordChange = signupViewModel::setPassword,
+                            onPasswordConfirmChange = signupViewModel::setPasswordConfirm,
+                            onBack = { navController.popBackStack() },
+                            onNext = { navController.navigate(Screen.SignupNickname.route) }
+                        )
+                    }
+                    composable(Screen.SignupNickname.route) { entry ->
+                        val signupViewModel: SignupViewModel = entry.sharedSignupViewModel(navController)
+                        SignupNicknameScreen(
+                            nickname = signupViewModel.draft.nickname,
+                            onNicknameChange = signupViewModel::setNickname,
+                            submitState = signupViewModel.submitState,
+                            onBack = { navController.popBackStack() },
+                            onSubmit = {
+                                signupViewModel.submitSignup {
+                                    navController.popBackStack(Screen.Login.route, inclusive = false)
+                                }
+                            }
+                        )
+                    }
                 }
 
                 navigation(startDestination = Screen.DiaryDate.route, route = Screen.DiaryGraph.route) {
@@ -213,6 +310,7 @@ fun GamjeongseogaApp() {
                         DiaryCompleteScreen(
                             draft = diaryViewModel.draft,
                             result = (generationState as? DiaryGenerationState.Success)?.response,
+                            errorMessage = (generationState as? DiaryGenerationState.Error)?.message,
                             onBack = {
                                 navController.navigate(Screen.Home.route) {
                                     popUpTo(navController.graph.id) { inclusive = true }
@@ -241,6 +339,26 @@ fun GamjeongseogaApp() {
 private fun NavBackStackEntry.sharedDiaryViewModel(navController: NavHostController): DiaryViewModel {
     val parentEntry = remember(this) {
         navController.getBackStackEntry(Screen.DiaryGraph.route)
+    }
+    return viewModel(parentEntry)
+}
+
+// 회원가입 플로우(중첩 네비게이션 그래프) 내 화면들이 같은 SignupViewModel 인스턴스를
+// 공유하도록, 그래프의 시작 지점 백스택 엔트리에 스코프를 건다.
+@Composable
+private fun NavBackStackEntry.sharedSignupViewModel(navController: NavHostController): SignupViewModel {
+    val parentEntry = remember(this) {
+        navController.getBackStackEntry(Screen.SignupGraph.route)
+    }
+    return viewModel(parentEntry)
+}
+
+// 성별/직업 변경 화면에서 저장에 성공했을 때, 설정 화면이 들고 있던 바로 그 SettingsViewModel
+// 인스턴스를 찾아 계정 정보를 다시 불러오게 하기 위한 스코프.
+@Composable
+private fun NavBackStackEntry.sharedSettingsViewModel(navController: NavHostController): SettingsViewModel {
+    val parentEntry = remember(this) {
+        navController.getBackStackEntry(Screen.Settings.route)
     }
     return viewModel(parentEntry)
 }

@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlin.math.abs
@@ -302,8 +303,8 @@ private fun HomeHeader() {
         )
 
         Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 49.dp, bottom = 20.dp)) {
-            // TODO: 오늘 날짜(시스템 날짜)로 교체
-            Text("2026.06.04", color = HeaderTextOnGreen, style = MaterialTheme.typography.bodyMedium)
+            val today = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy.MM.dd")) }
+            Text(today, color = HeaderTextOnGreen, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(8.dp))
             Text("오늘의 감정을", color = HeaderTextOnGreen, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(4.dp))

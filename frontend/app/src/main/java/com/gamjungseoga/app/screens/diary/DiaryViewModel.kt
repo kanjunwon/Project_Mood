@@ -8,12 +8,16 @@ import androidx.lifecycle.viewModelScope
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryGenerateRequest
 import com.gamjungseoga.app.network.DiaryGenerateResponse
+import java.net.ConnectException
+import java.net.UnknownHostException
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 data class DiaryDraft(
     val date: LocalDate = LocalDate.now(),
@@ -69,7 +73,7 @@ class DiaryViewModel : ViewModel() {
 
     // DiaryWhereScreen에서 "다음으로"를 눌렀을 때 호출: 지금까지 작성한 답변들을
     // 백엔드 POST /generate-diary 로 보내서 일기 생성 + 감정분석 결과를 받아온다.
-    fun submitDiary(userId: String? = ApiClient.TEST_USER_ID) {
+    fun submitDiary() {
         if (generationState is DiaryGenerationState.Loading) return
         generationState = DiaryGenerationState.Loading
 
@@ -84,17 +88,29 @@ class DiaryViewModel : ViewModel() {
                     why = current.why.trim(),
                     who = who,
                     whenText = formatWhen(current.date, current.time),
-                    where = current.where.trim(),
-                    userId = userId
+                    where = current.where.trim()
                 )
 
                 val response = ApiClient.diaryApi.generateDiary(request)
                 generationState = DiaryGenerationState.Success(response)
             } catch (e: Exception) {
-                generationState = DiaryGenerationState.Error(e.message ?: "일기 생성에 실패했어요.")
+                generationState = DiaryGenerationState.Error(describeError(e))
             }
         }
     }
+}
+
+// 개발 중 백엔드 연결 문제를 바로 알아볼 수 있게, 흔한 네트워크 예외를 원인이 드러나는 문구로 바꿔준다.
+private fun describeError(e: Exception): String = when (e) {
+    is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
+    is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
+    is java.net.SocketTimeoutException, is TimeoutException ->
+        "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
+    is HttpException -> {
+        val body = e.response()?.errorBody()?.string()?.take(300)
+        "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
+    }
+    else -> e.message ?: "일기 생성에 실패했어요 (${e::class.simpleName})."
 }
 
 private val whenDateFormatter = DateTimeFormatter.ofPattern("M월 d일")
