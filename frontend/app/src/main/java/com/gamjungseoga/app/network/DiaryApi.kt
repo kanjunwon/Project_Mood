@@ -3,7 +3,6 @@ package com.gamjungseoga.app.network
 import com.google.gson.annotations.SerializedName
 import retrofit2.http.Body
 import retrofit2.http.GET
-import retrofit2.http.Path
 import retrofit2.http.POST
 
 // backend/app/routers/diary.py, backend/app/schemas/diary.py 와 1:1로 맞춘 인터페이스
@@ -11,8 +10,8 @@ interface DiaryApi {
     @POST("generate-diary")
     suspend fun generateDiary(@Body request: DiaryGenerateRequest): DiaryGenerateResponse
 
-    @GET("diaries/{userId}")
-    suspend fun getDiaries(@Path("userId") userId: String): DiaryListResponse
+    @GET("diaries/me")
+    suspend fun getDiaries(): DiaryListResponse
 }
 
 data class DiaryGenerateRequest(
@@ -37,7 +36,7 @@ data class DiaryListResponse(
     val diaries: List<DiaryEntry> = emptyList()
 )
 
-// backend/supabase_schema.sql의 diary_entries 테이블 컬럼과 1:1 대응 (GET /diaries/{user_id}가
+// backend/supabase_schema.sql의 diary_entries 테이블 컬럼과 1:1 대응 (GET /diaries/me가
 // select("*") 결과를 그대로 반환하므로 테이블 컬럼명 = 응답 필드명)
 data class DiaryEntry(
     val id: Long,

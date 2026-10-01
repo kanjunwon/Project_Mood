@@ -15,7 +15,7 @@ sealed interface DiaryListState {
     data class Error(val message: String) : DiaryListState
 }
 
-// 홈("최근 작성한 페이지")과 아카이브("나의 감정 서재") 둘 다 같은 GET /diaries/{user_id}
+// 홈("최근 작성한 페이지")과 아카이브("나의 감정 서재") 둘 다 같은 GET /diaries/me
 // 목록을 쓰므로, 화면마다 이 ViewModel을 하나씩 인스턴스화해서 재사용.
 class DiaryListViewModel : ViewModel() {
     var state by mutableStateOf<DiaryListState>(DiaryListState.Loading)
@@ -25,11 +25,11 @@ class DiaryListViewModel : ViewModel() {
         load()
     }
 
-    fun load(userId: String = ApiClient.TEST_USER_ID) {
+    fun load() {
         state = DiaryListState.Loading
         viewModelScope.launch {
             state = try {
-                val response = ApiClient.diaryApi.getDiaries(userId)
+                val response = ApiClient.diaryApi.getDiaries()
                 // created_at 최신순 정렬 (문자열이 ISO 8601이라 문자열 비교로도 시간순 정렬됨)
                 DiaryListState.Loaded(response.diaries.sortedByDescending { it.createdAt ?: "" })
             } catch (e: Exception) {

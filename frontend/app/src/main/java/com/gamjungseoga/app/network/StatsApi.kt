@@ -2,20 +2,17 @@ package com.gamjungseoga.app.network
 
 import com.google.gson.annotations.SerializedName
 import retrofit2.http.GET
-import retrofit2.http.Path
 import retrofit2.http.Query
 
 // backend/app/routers/stats.py, backend/app/schemas/stats.py 와 1:1로 맞춘 인터페이스
 interface StatsApi {
-    @GET("stats/daily/{userId}")
+    @GET("stats/daily/me")
     suspend fun getDailyStats(
-        @Path("userId") userId: String,
         @Query("date") date: String? = null // YYYY-MM-DD, 생략하면 서버가 오늘 날짜로 처리
     ): DailyStatsResponse
 
-    @GET("stats/monthly/{userId}")
+    @GET("stats/monthly/me")
     suspend fun getMonthlyStats(
-        @Path("userId") userId: String,
         @Query("year") year: Int,
         @Query("month") month: Int
     ): MonthlyStatsResponse

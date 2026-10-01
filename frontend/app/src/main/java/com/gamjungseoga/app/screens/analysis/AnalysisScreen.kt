@@ -298,7 +298,6 @@ fun AnalysisScreen() {
         dailyError = null
         try {
             dailyStats = ApiClient.statsApi.getDailyStats(
-                userId = ApiClient.TEST_USER_ID,
                 date = selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
             )
         } catch (e: Exception) {
@@ -321,7 +320,6 @@ fun AnalysisScreen() {
         negativeDayStats = null
         try {
             val stats = ApiClient.statsApi.getMonthlyStats(
-                userId = ApiClient.TEST_USER_ID,
                 year = selectedMonth.year,
                 month = selectedMonth.monthValue
             )
@@ -330,12 +328,12 @@ fun AnalysisScreen() {
             // 한 번씩 더 불러옴. 실패해도(예: 그 사이 서버가 끊김) 월간 리포트 전체를 막지는 않음
             stats.mostPositiveDay?.let { date ->
                 positiveDayStats = runCatching {
-                    ApiClient.statsApi.getDailyStats(ApiClient.TEST_USER_ID, date)
+                    ApiClient.statsApi.getDailyStats(date)
                 }.getOrNull()
             }
             stats.mostNegativeDay?.let { date ->
                 negativeDayStats = runCatching {
-                    ApiClient.statsApi.getDailyStats(ApiClient.TEST_USER_ID, date)
+                    ApiClient.statsApi.getDailyStats(date)
                 }.getOrNull()
             }
         } catch (e: Exception) {
