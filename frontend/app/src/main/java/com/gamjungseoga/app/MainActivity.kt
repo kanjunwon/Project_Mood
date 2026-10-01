@@ -301,6 +301,12 @@ fun GamjeongseogaApp() {
                                 navController.navigate(Screen.DiaryComplete.route) {
                                     popUpTo(Screen.DiaryDate.route) { inclusive = true }
                                 }
+                            },
+                            onExit = {
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(navController.graph.id) { inclusive = true }
+                                    launchSingleTop = true
+                                }
                             }
                         )
                     }
@@ -310,7 +316,6 @@ fun GamjeongseogaApp() {
                         DiaryCompleteScreen(
                             draft = diaryViewModel.draft,
                             result = (generationState as? DiaryGenerationState.Success)?.response,
-                            errorMessage = (generationState as? DiaryGenerationState.Error)?.message,
                             onBack = {
                                 navController.navigate(Screen.Home.route) {
                                     popUpTo(navController.graph.id) { inclusive = true }

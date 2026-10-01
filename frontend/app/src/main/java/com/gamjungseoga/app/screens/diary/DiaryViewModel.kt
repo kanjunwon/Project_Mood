@@ -105,10 +105,15 @@ private fun describeError(e: Exception): String = when (e) {
     is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
     is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
     is java.net.SocketTimeoutException, is TimeoutException ->
-        "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
+        "그림을 그리는 데 시간이 오래 걸리고 있어요. 다시 시도해주세요."
     is HttpException -> {
-        val body = e.response()?.errorBody()?.string()?.take(300)
-        "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
+        if (e.code() == 504 || e.code() == 524) {
+            // 504/524: 이미지 생성이 오래 걸려 중간에 연결이 끊긴 경우
+            "그림을 그리는 데 시간이 오래 걸리고 있어요. 다시 시도해주세요."
+        } else {
+            val body = e.response()?.errorBody()?.string()?.take(300)
+            "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
+        }
     }
     else -> e.message ?: "일기 생성에 실패했어요 (${e::class.simpleName})."
 }

@@ -49,19 +49,11 @@ import com.gamjungseoga.app.network.DiaryGenerateResponse
 private data class DiaryEmotionBar(val label: String, val percent: Int, val barHeight: Dp, val color: Color)
 
 private val emotionBarColors = listOf(ChartMint, AccentGreen, RibbonPink)
-private val fallbackTopEmotion = "뿌듯함"
-private val fallbackTopEmotionPercent = 60
-private val fallbackEmotionBars = listOf(
-    DiaryEmotionBar("뿌듯한", 60, 138.dp, ChartMint),
-    DiaryEmotionBar("편안한", 30, 95.dp, AccentGreen),
-    DiaryEmotionBar("행복한", 10, 56.dp, RibbonPink)
-)
 private val maxEmotionBarHeight = 138.dp
 
 // emotion_scores(감정별 0~1 점수)에서 상위 3개를 뽑아 막대그래프용 데이터로 변환.
-// 결과가 없으면(API 실패 등) fallback 목업으로 대체.
 private fun buildEmotionBars(scores: Map<String, Double>?): List<DiaryEmotionBar> {
-    if (scores.isNullOrEmpty()) return fallbackEmotionBars
+    if (scores.isNullOrEmpty()) return emptyList()
     val top3 = scores.entries.sortedByDescending { it.value }.take(3)
     return top3.mapIndexed { index, (label, score) ->
         val percent = (score * 100).toInt().coerceIn(0, 100)
@@ -78,13 +70,12 @@ private fun buildEmotionBars(scores: Map<String, Double>?): List<DiaryEmotionBar
 fun DiaryCompleteScreen(
     draft: DiaryDraft,
     result: DiaryGenerateResponse?,
-    errorMessage: String? = null,
     onBack: () -> Unit
 ) {
-    val diaryText = result?.generatedDiary?.takeIf { it.isNotBlank() } ?: remember(draft) { buildMockDiaryText(draft) }
-    val topEmotion = result?.topEmotion ?: fallbackTopEmotion
+    val diaryText = result?.generatedDiary.orEmpty()
+    val topEmotion = result?.topEmotion.orEmpty()
     val emotionBars = remember(result) { buildEmotionBars(result?.emotionScores) }
-    val topEmotionPercent = emotionBars.firstOrNull()?.percent ?: fallbackTopEmotionPercent
+    val topEmotionPercent = emotionBars.firstOrNull()?.percent ?: 0
     val whoDisplay = draft.who.firstOrNull() ?: draft.whoCustom.ifBlank { "혼자" }
     val whereDisplay = draft.where.ifBlank { "기록된 장소 없음" }
 
@@ -93,12 +84,6 @@ fun DiaryCompleteScreen(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item { DiaryTopBar(onBack = onBack) }
-        if (errorMessage != null) {
-            item {
-                Spacer(Modifier.height(8.dp))
-                DiaryGenerationErrorBanner(errorMessage, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-        }
         item {
             Spacer(Modifier.height(8.dp))
             DiaryDateLabel(draft.date, modifier = Modifier.padding(horizontal = 16.dp))
@@ -156,52 +141,6 @@ fun DiaryCompleteScreen(
                     suffix = "에요"
                 )
             }
-        }
-    }
-}
-
-private fun buildMockDiaryText(draft: DiaryDraft): String {
-    val whoText = (draft.who.toList() + listOfNotNull(draft.whoCustom.takeIf { it.isNotBlank() }))
-        .joinToString(", ")
-        .ifBlank { "혼자" }
-    return buildString {
-        if (draft.what.isNotBlank()) {
-            append(draft.what.trim())
-            append(". ")
-        }
-        if (draft.where.isNotBlank()) {
-            append(draft.where.trim())
-            append("에서 ")
-            append(whoText)
-            append("와(과) 함께한 시간이었다. ")
-        }
-        if (draft.why.isNotBlank()) {
-            append(draft.why.trim())
-        }
-    }.ifBlank { "오늘의 이야기를 기록했어요." }
-}
-
-// 개발 중 API 실패를 숨기지 않고 바로 보여주기 위한 배너. 아래 본문/통계는 계속 목업 데이터로 채워지므로
-// 화면 자체는 무너지지 않되, 지금 보이는 내용이 실제 생성 결과가 아니라는 걸 명확히 알린다.
-@Composable
-private fun DiaryGenerationErrorBanner(message: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = Color(0xFFFDECEA),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                "일기 생성 요청 실패 (아래는 임시 데이터예요)",
-                style = MaterialTheme.typography.labelMedium.copy(fontFamily = PretendardFontFamily, fontWeight = FontWeight.Bold),
-                color = Color(0xFFB3261E)
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                message,
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = PretendardFontFamily),
-                color = Color(0xFFB3261E)
-            )
         }
     }
 }
