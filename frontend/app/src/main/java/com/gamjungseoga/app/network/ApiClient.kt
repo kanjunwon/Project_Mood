@@ -8,8 +8,8 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object ApiClient {
-    // TODO: 백엔드 서버 주소가 정해지면 교체 (에뮬레이터에서 로컬 서버는 10.0.2.2 사용)
-    const val BASE_URL = "http://10.0.2.2:8000/"
+    // RunPod에 띄운 백엔드 서버 주소. 포드를 재시작하면 주소가 바뀔 수 있으니 그때마다 교체.
+    const val BASE_URL = "https://ug6y88pdnvhvlt-8000.proxy.runpod.net/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY

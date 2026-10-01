@@ -82,6 +82,7 @@ class DiaryViewModel : ViewModel() {
                 val current = draft
                 val who = (current.who.toList() + listOfNotNull(current.whoCustom.trim().takeIf { it.isNotEmpty() }))
                     .ifEmpty { listOf("혼자") }
+                    .joinToString(",")
 
                 val request = DiaryGenerateRequest(
                     what = current.what.trim(),

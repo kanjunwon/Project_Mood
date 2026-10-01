@@ -17,7 +17,7 @@ interface DiaryApi {
 data class DiaryGenerateRequest(
     val what: String,
     val why: String,
-    val who: List<String>,
+    val who: String,
     @SerializedName("when") val whenText: String,
     val where: String
 )
@@ -28,7 +28,8 @@ data class DiaryGenerateResponse(
     @SerializedName("validation_failed") val validationFailed: Boolean,
     @SerializedName("top_emotion") val topEmotion: String? = null,
     @SerializedName("emotion_scores") val emotionScores: Map<String, Double>? = null,
-    @SerializedName("sentiment_score") val sentimentScore: Double? = null
+    @SerializedName("sentiment_score") val sentimentScore: Double? = null,
+    @SerializedName("image_url") val imageUrl: String? = null
 )
 
 data class DiaryListResponse(
