@@ -16,7 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.TitleBrown
@@ -25,23 +24,28 @@ import java.time.LocalDate
 private val birthDateWheelItemHeight = 56.dp
 private val currentYear = LocalDate.now().year
 
+// 설정의 "생년월일 변경"과 회원가입의 "생년월일" 단계가 공유하는 UI: 상단 뒤로가기+제목,
+// 년/월/일 휠 피커 세 개, 하단 버튼. 값 보관과 저장 시점/로직은 호출하는 쪽(ViewModel)이 맡는다.
 @Composable
 fun BirthDateScreen(
+    title: String,
+    date: LocalDate,
+    onYearChange: (Int) -> Unit,
+    onMonthChange: (Int) -> Unit,
+    onDayChange: (Int) -> Unit,
     onBack: () -> Unit,
-    onSaved: () -> Unit,
-    viewModel: BirthDateViewModel = viewModel()
+    onConfirm: () -> Unit,
+    confirmButtonText: String = "변경하기",
+    saving: Boolean = false,
+    errorMessage: String? = null
 ) {
-    val date = viewModel.date
     val years = remember(currentYear) { (1950..currentYear).toList() }
     val months = remember { (1..12).toList() }
     val lastDayOfMonth = remember(date.year, date.monthValue) { date.lengthOfMonth() }
     val days = remember(lastDayOfMonth) { (1..lastDayOfMonth).toList() }
 
-    val saving = viewModel.saveState is BirthDateSaveState.Loading
-    val errorMessage = (viewModel.saveState as? BirthDateSaveState.Error)?.message
-
     Column(modifier = Modifier.fillMaxSize()) {
-        SettingsSubScreenTopBar(title = "생년월일 변경", onBack = onBack)
+        SettingsSubScreenTopBar(title = title, onBack = onBack)
 
         Spacer(Modifier.height(24.dp))
 
@@ -53,7 +57,7 @@ fun BirthDateScreen(
             WheelPicker(
                 items = years,
                 selectedIndex = years.indexOf(date.year).coerceAtLeast(0),
-                onSelectedIndexChange = { viewModel.setYear(years[it]) },
+                onSelectedIndexChange = { onYearChange(years[it]) },
                 itemHeight = birthDateWheelItemHeight,
                 infinite = false,
                 modifier = Modifier.width(110.dp)
@@ -63,7 +67,7 @@ fun BirthDateScreen(
             WheelPicker(
                 items = months,
                 selectedIndex = date.monthValue - 1,
-                onSelectedIndexChange = { viewModel.setMonth(months[it]) },
+                onSelectedIndexChange = { onMonthChange(months[it]) },
                 itemHeight = birthDateWheelItemHeight,
                 infinite = true,
                 modifier = Modifier.width(90.dp)
@@ -73,7 +77,7 @@ fun BirthDateScreen(
             WheelPicker(
                 items = days,
                 selectedIndex = (date.dayOfMonth - 1).coerceIn(0, days.lastIndex),
-                onSelectedIndexChange = { viewModel.setDayOfMonth(days[it]) },
+                onSelectedIndexChange = { onDayChange(days[it]) },
                 itemHeight = birthDateWheelItemHeight,
                 infinite = true,
                 modifier = Modifier.width(90.dp)
@@ -95,8 +99,8 @@ fun BirthDateScreen(
         Spacer(Modifier.weight(1f))
 
         SettingsPrimaryButton(
-            text = "변경하기",
-            onClick = { viewModel.save(onSaved) },
+            text = confirmButtonText,
+            onClick = onConfirm,
             loading = saving,
             modifier = Modifier.padding(horizontal = 16.dp)
         )

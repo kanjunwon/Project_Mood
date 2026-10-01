@@ -46,6 +46,19 @@ fun LoginScreen(
 
         Spacer(Modifier.height(40.dp))
 
+        if (viewModel.notice != null) {
+            Text(
+                viewModel.notice.orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MonthLabelGray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
         AuthFieldLabel("이메일", modifier = Modifier.padding(horizontal = 16.dp))
         Spacer(Modifier.height(8.dp))
         AuthTextField(

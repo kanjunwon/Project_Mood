@@ -31,9 +31,12 @@ import com.gamjungseoga.app.navigation.Screen
 import com.gamjungseoga.app.screens.analysis.AnalysisScreen
 import com.gamjungseoga.app.screens.archive.ArchiveScreen
 import com.gamjungseoga.app.screens.auth.LoginScreen
+import com.gamjungseoga.app.screens.auth.LoginViewModel
+import com.gamjungseoga.app.screens.auth.SignupBirthDateScreen
 import com.gamjungseoga.app.screens.auth.SignupEmailScreen
 import com.gamjungseoga.app.screens.auth.SignupNicknameScreen
 import com.gamjungseoga.app.screens.auth.SignupPasswordScreen
+import com.gamjungseoga.app.screens.auth.SignupSubmitState
 import com.gamjungseoga.app.screens.auth.SignupViewModel
 import com.gamjungseoga.app.screens.diary.DiaryCompleteScreen
 import com.gamjungseoga.app.screens.diary.DiaryDateScreen
@@ -56,12 +59,15 @@ import com.gamjungseoga.app.screens.profilecustomize.glassesOptions
 import com.gamjungseoga.app.screens.profilecustomize.hairColorOptions
 import com.gamjungseoga.app.screens.profilecustomize.hairLengthOptions
 import com.gamjungseoga.app.screens.profilecustomize.profileCustomizeOptionLabel
-import com.gamjungseoga.app.screens.settings.BirthDateScreen
+import com.gamjungseoga.app.screens.settings.BirthDateChangeScreen
+import com.gamjungseoga.app.screens.settings.ChipSelectScreen
 import com.gamjungseoga.app.screens.settings.GenderScreen
 import com.gamjungseoga.app.screens.settings.JobScreen
 import com.gamjungseoga.app.screens.settings.PasswordChangeScreen
 import com.gamjungseoga.app.screens.settings.SettingsScreen
 import com.gamjungseoga.app.screens.settings.SettingsViewModel
+import com.gamjungseoga.app.screens.settings.genderOptions
+import com.gamjungseoga.app.screens.settings.jobOptions
 import com.gamjungseoga.app.ui.theme.BackgroundColor
 import com.gamjungseoga.app.ui.theme.GamjeongseogaTheme
 
@@ -158,7 +164,7 @@ fun GamjeongseogaApp() {
                 }
                 composable(Screen.BirthDateChange.route) { entry ->
                     val settingsViewModel = entry.sharedSettingsViewModel(navController)
-                    BirthDateScreen(
+                    BirthDateChangeScreen(
                         onBack = { navController.popBackStack() },
                         onSaved = {
                             settingsViewModel.loadAccount()
@@ -226,13 +232,62 @@ fun GamjeongseogaApp() {
                         SignupNicknameScreen(
                             nickname = signupViewModel.draft.nickname,
                             onNicknameChange = signupViewModel::setNickname,
-                            submitState = signupViewModel.submitState,
                             onBack = { navController.popBackStack() },
-                            onSubmit = {
-                                signupViewModel.submitSignup {
-                                    navController.popBackStack(Screen.Login.route, inclusive = false)
-                                }
-                            }
+                            onNext = { navController.navigate(Screen.SignupGender.route) }
+                        )
+                    }
+                    composable(Screen.SignupGender.route) { entry ->
+                        val signupViewModel: SignupViewModel = entry.sharedSignupViewModel(navController)
+                        ChipSelectScreen(
+                            title = "성별",
+                            options = genderOptions,
+                            selected = signupViewModel.draft.gender,
+                            onSelectOption = signupViewModel::setGender,
+                            onBack = { navController.popBackStack() },
+                            onSave = { navController.navigate(Screen.SignupJob.route) },
+                            saving = false,
+                            errorMessage = null,
+                            buttonText = "다음으로"
+                        )
+                    }
+                    composable(Screen.SignupJob.route) { entry ->
+                        val signupViewModel: SignupViewModel = entry.sharedSignupViewModel(navController)
+                        ChipSelectScreen(
+                            title = "직업",
+                            options = jobOptions,
+                            selected = signupViewModel.draft.job,
+                            onSelectOption = signupViewModel::setJob,
+                            onBack = { navController.popBackStack() },
+                            onSave = { navController.navigate(Screen.SignupBirthDate.route) },
+                            saving = false,
+                            errorMessage = null,
+                            buttonText = "다음으로"
+                        )
+                    }
+                    composable(Screen.SignupBirthDate.route) { entry ->
+                        val signupViewModel: SignupViewModel = entry.sharedSignupViewModel(navController)
+                        val loginViewModel = entry.sharedLoginViewModel(navController)
+                        SignupBirthDateScreen(
+                            date = signupViewModel.draft.birthDate,
+                            onYearChange = signupViewModel::setBirthYear,
+                            onMonthChange = signupViewModel::setBirthMonth,
+                            onDayChange = signupViewModel::setBirthDay,
+                            onBack = { navController.popBackStack() },
+                            onConfirm = {
+                                signupViewModel.submitSignup(
+                                    onSuccess = {
+                                        navController.popBackStack(Screen.Login.route, inclusive = false)
+                                    },
+                                    onPartialFailure = {
+                                        loginViewModel.showNotice(
+                                            "계정은 생성되었지만 일부 정보 저장에 실패했어요. 설정에서 다시 입력해주세요."
+                                        )
+                                        navController.popBackStack(Screen.Login.route, inclusive = false)
+                                    }
+                                )
+                            },
+                            saving = signupViewModel.submitState is SignupSubmitState.Loading,
+                            errorMessage = (signupViewModel.submitState as? SignupSubmitState.Error)?.message
                         )
                     }
                 }
@@ -472,6 +527,16 @@ private fun NavBackStackEntry.sharedDiaryViewModel(navController: NavHostControl
 private fun NavBackStackEntry.sharedSignupViewModel(navController: NavHostController): SignupViewModel {
     val parentEntry = remember(this) {
         navController.getBackStackEntry(Screen.SignupGraph.route)
+    }
+    return viewModel(parentEntry)
+}
+
+// 회원가입 마지막(생년월일) 단계에서 계정 부가정보 저장이 실패했을 때, 로그인 화면이 들고 있던
+// 바로 그 LoginViewModel 인스턴스에 안내 문구를 심어두기 위한 스코프.
+@Composable
+private fun NavBackStackEntry.sharedLoginViewModel(navController: NavHostController): LoginViewModel {
+    val parentEntry = remember(this) {
+        navController.getBackStackEntry(Screen.Login.route)
     }
     return viewModel(parentEntry)
 }

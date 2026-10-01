@@ -21,6 +21,9 @@ sealed class Screen(val route: String) {
     data object SignupEmail : Screen("signup/email")
     data object SignupPassword : Screen("signup/password")
     data object SignupNickname : Screen("signup/nickname")
+    data object SignupGender : Screen("signup/gender")
+    data object SignupJob : Screen("signup/job")
+    data object SignupBirthDate : Screen("signup/birthdate")
 
     // 일기 작성 플로우 (+ 버튼으로 진입하는 중첩 네비게이션 그래프)
     data object DiaryGraph : Screen("diary")

@@ -27,6 +27,16 @@ class LoginViewModel : ViewModel() {
     var state by mutableStateOf<LoginState>(LoginState.Idle)
         private set
 
+    // 회원가입 마지막 단계에서 계정은 만들어졌지만 부가 정보 저장(PATCH /users/me/account)이
+    // 실패했을 때, 로그인 화면으로 돌아오면서 보여줄 안내문. sharedLoginViewModel로 같은
+    // 인스턴스를 받아온 회원가입 플로우가 채워 넣는다.
+    var notice by mutableStateOf<String?>(null)
+        private set
+
+    fun showNotice(message: String?) {
+        notice = message
+    }
+
     fun setEmail(text: String) {
         draft = draft.copy(email = text)
     }
