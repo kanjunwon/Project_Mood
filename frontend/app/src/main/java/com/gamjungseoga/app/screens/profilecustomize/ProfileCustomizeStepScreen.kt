@@ -1,8 +1,6 @@
 package com.gamjungseoga.app.screens.profilecustomize
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,27 +8,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.gamjungseoga.app.screens.settings.SelectableOptionButton
 import com.gamjungseoga.app.screens.settings.SettingsSubScreenTopBar
-import com.gamjungseoga.app.ui.theme.CalendarCellGray
-import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
-import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 
 data class ProfileCustomizeOption(val label: String, val code: String)
@@ -99,7 +92,7 @@ fun ProfileCustomizeStepScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             options.forEach { option ->
-                ProfileOptionButton(
+                SelectableOptionButton(
                     text = option.label,
                     selected = option.code == selectedCode,
                     enabled = optionsEnabled,
@@ -138,32 +131,5 @@ private fun StepArrowButton(icon: ImageVector, onClick: (() -> Unit)?, contentDe
             contentDescription = contentDescription,
             tint = if (onClick != null) TitleBrown else TitleBrown.copy(alpha = 0.3f)
         )
-    }
-}
-
-@Composable
-private fun ProfileOptionButton(
-    text: String,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        color = if (selected) CountLabelBrown else SurfaceColor,
-        border = if (selected) null else BorderStroke(1.dp, CalendarCellGray),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) Color.White else MonthLabelGray
-            )
-        }
     }
 }

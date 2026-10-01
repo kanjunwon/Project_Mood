@@ -3,7 +3,7 @@ package com.gamjungseoga.app.screens.settings
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-private val jobOptions = listOf("학생", "직장인", "군인", "주부", "무직")
+val jobOptions = listOf("학생", "직장인", "군인", "주부", "무직")
 
 @Composable
 fun JobScreen(

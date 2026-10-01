@@ -47,10 +47,15 @@ import com.gamjungseoga.app.screens.emotiontest.EmotionTestScreen
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestViewModel
 import com.gamjungseoga.app.screens.emotiontest.emotionTestQuestions
 import com.gamjungseoga.app.screens.home.HomeScreen
-import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeOption
+import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeCompleteScreen
 import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeSaveState
 import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeStepScreen
 import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeViewModel
+import com.gamjungseoga.app.screens.profilecustomize.bangsOptions
+import com.gamjungseoga.app.screens.profilecustomize.glassesOptions
+import com.gamjungseoga.app.screens.profilecustomize.hairColorOptions
+import com.gamjungseoga.app.screens.profilecustomize.hairLengthOptions
+import com.gamjungseoga.app.screens.profilecustomize.profileCustomizeOptionLabel
 import com.gamjungseoga.app.screens.settings.BirthDateScreen
 import com.gamjungseoga.app.screens.settings.GenderScreen
 import com.gamjungseoga.app.screens.settings.JobScreen
@@ -341,11 +346,7 @@ fun GamjeongseogaApp() {
                             step = 1,
                             totalSteps = 4,
                             question = "어떤 안경을\n착용하고 있나요?",
-                            options = listOf(
-                                ProfileCustomizeOption("뿔테 안경", "horn_rimmed"),
-                                ProfileCustomizeOption("동그란 안경", "round"),
-                                ProfileCustomizeOption("안경을 쓰지 않아요", "none")
-                            ),
+                            options = glassesOptions,
                             selectedCode = viewModel.draft.glasses,
                             optionsEnabled = true,
                             onSelectOption = { code ->
@@ -365,10 +366,7 @@ fun GamjeongseogaApp() {
                             step = 2,
                             totalSteps = 4,
                             question = "헤어스타일은\n어떤가요?",
-                            options = listOf(
-                                ProfileCustomizeOption("앞머리가 있어요", "true"),
-                                ProfileCustomizeOption("앞머리가 없어요", "false")
-                            ),
+                            options = bangsOptions,
                             selectedCode = viewModel.draft.bangs?.toString(),
                             optionsEnabled = true,
                             onSelectOption = { code ->
@@ -388,10 +386,7 @@ fun GamjeongseogaApp() {
                             step = 3,
                             totalSteps = 4,
                             question = "머리 길이는\n어떤가요?",
-                            options = listOf(
-                                ProfileCustomizeOption("긴 머리에요", "long"),
-                                ProfileCustomizeOption("짧은 머리에요", "short")
-                            ),
+                            options = hairLengthOptions,
                             selectedCode = viewModel.draft.hairLength,
                             optionsEnabled = true,
                             onSelectOption = { code ->
@@ -407,26 +402,43 @@ fun GamjeongseogaApp() {
                     }
                     composable(Screen.ProfileCustomizeHairColor.route) { entry ->
                         val viewModel = entry.sharedProfileCustomizeViewModel(navController)
-                        val saving = viewModel.saveState is ProfileCustomizeSaveState.Loading
                         ProfileCustomizeStepScreen(
                             step = 4,
                             totalSteps = 4,
                             question = "머리 색은\n어떤 색인가요?",
-                            options = listOf(
-                                ProfileCustomizeOption("검은색이에요", "black"),
-                                ProfileCustomizeOption("갈색이에요", "brown")
-                            ),
+                            options = hairColorOptions,
                             selectedCode = viewModel.draft.hairColor,
-                            optionsEnabled = !saving,
+                            optionsEnabled = true,
                             onSelectOption = { code ->
                                 viewModel.setHairColor(code)
+                                navController.navigate(Screen.ProfileCustomizeComplete.route)
+                            },
+                            onBack = { navController.popBackStack() },
+                            onPrevStep = { navController.popBackStack() },
+                            onNextStep = null
+                        )
+                    }
+                    composable(Screen.ProfileCustomizeComplete.route) { entry ->
+                        val viewModel = entry.sharedProfileCustomizeViewModel(navController)
+                        val draft = viewModel.draft
+                        val summaryLabels = listOf(
+                            profileCustomizeOptionLabel(glassesOptions, draft.glasses),
+                            profileCustomizeOptionLabel(bangsOptions, draft.bangs?.toString()),
+                            profileCustomizeOptionLabel(hairLengthOptions, draft.hairLength),
+                            profileCustomizeOptionLabel(hairColorOptions, draft.hairColor)
+                        )
+                        ProfileCustomizeCompleteScreen(
+                            summaryLabels = summaryLabels,
+                            onBack = { navController.popBackStack() },
+                            onEditAgain = {
+                                navController.popBackStack(Screen.ProfileCustomizeGlasses.route, inclusive = false)
+                            },
+                            onConfirm = {
                                 viewModel.save {
                                     navController.popBackStack(Screen.Settings.route, inclusive = false)
                                 }
                             },
-                            onBack = { navController.popBackStack() },
-                            onPrevStep = { navController.popBackStack() },
-                            onNextStep = null,
+                            saving = viewModel.saveState is ProfileCustomizeSaveState.Loading,
                             errorMessage = (viewModel.saveState as? ProfileCustomizeSaveState.Error)?.message
                         )
                     }

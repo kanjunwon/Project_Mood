@@ -39,4 +39,5 @@ sealed class Screen(val route: String) {
     data object ProfileCustomizeBangs : Screen("profile-customize/bangs")
     data object ProfileCustomizeHairLength : Screen("profile-customize/hair-length")
     data object ProfileCustomizeHairColor : Screen("profile-customize/hair-color")
+    data object ProfileCustomizeComplete : Screen("profile-customize/complete")
 }
