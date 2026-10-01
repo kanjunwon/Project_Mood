@@ -32,7 +32,7 @@ interface UserApi {
 }
 
 data class UserProfileRequest(
-    val glasses: Boolean? = null,
+    val glasses: String? = null, // "horn_rimmed" | "round" | "none"
     val bangs: Boolean? = null,
     @SerializedName("hair_length") val hairLength: String? = null,
     @SerializedName("hair_color") val hairColor: String? = null
@@ -40,7 +40,7 @@ data class UserProfileRequest(
 
 data class UserProfileResponse(
     val status: String,
-    val glasses: Boolean? = null,
+    val glasses: String? = null, // "horn_rimmed" | "round" | "none"
     val bangs: Boolean? = null,
     @SerializedName("hair_length") val hairLength: String? = null,
     @SerializedName("hair_color") val hairColor: String? = null

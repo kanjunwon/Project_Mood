@@ -47,6 +47,10 @@ import com.gamjungseoga.app.screens.emotiontest.EmotionTestScreen
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestViewModel
 import com.gamjungseoga.app.screens.emotiontest.emotionTestQuestions
 import com.gamjungseoga.app.screens.home.HomeScreen
+import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeOption
+import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeSaveState
+import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeStepScreen
+import com.gamjungseoga.app.screens.profilecustomize.ProfileCustomizeViewModel
 import com.gamjungseoga.app.screens.settings.BirthDateScreen
 import com.gamjungseoga.app.screens.settings.GenderScreen
 import com.gamjungseoga.app.screens.settings.JobScreen
@@ -119,6 +123,7 @@ fun GamjeongseogaApp() {
                     SettingsScreen(
                         onEmotionTestClick = { navController.navigate(Screen.EmotionTest.route) },
                         onLoginScreenClick = { navController.navigate(Screen.Login.route) },
+                        onProfileCustomizeClick = { navController.navigate(Screen.ProfileCustomizeGraph.route) },
                         onGenderChangeClick = { navController.navigate(Screen.GenderChange.route) },
                         onJobChangeClick = { navController.navigate(Screen.JobChange.route) },
                         onBirthDateChangeClick = { navController.navigate(Screen.BirthDateChange.route) },
@@ -325,6 +330,107 @@ fun GamjeongseogaApp() {
                         )
                     }
                 }
+
+                navigation(
+                    startDestination = Screen.ProfileCustomizeGlasses.route,
+                    route = Screen.ProfileCustomizeGraph.route
+                ) {
+                    composable(Screen.ProfileCustomizeGlasses.route) { entry ->
+                        val viewModel = entry.sharedProfileCustomizeViewModel(navController)
+                        ProfileCustomizeStepScreen(
+                            step = 1,
+                            totalSteps = 4,
+                            question = "어떤 안경을\n착용하고 있나요?",
+                            options = listOf(
+                                ProfileCustomizeOption("뿔테 안경", "horn_rimmed"),
+                                ProfileCustomizeOption("동그란 안경", "round"),
+                                ProfileCustomizeOption("안경을 쓰지 않아요", "none")
+                            ),
+                            selectedCode = viewModel.draft.glasses,
+                            optionsEnabled = true,
+                            onSelectOption = { code ->
+                                viewModel.setGlasses(code)
+                                navController.navigate(Screen.ProfileCustomizeBangs.route)
+                            },
+                            onBack = { navController.popBackStack() },
+                            onPrevStep = null,
+                            onNextStep = viewModel.draft.glasses?.let {
+                                { navController.navigate(Screen.ProfileCustomizeBangs.route) }
+                            }
+                        )
+                    }
+                    composable(Screen.ProfileCustomizeBangs.route) { entry ->
+                        val viewModel = entry.sharedProfileCustomizeViewModel(navController)
+                        ProfileCustomizeStepScreen(
+                            step = 2,
+                            totalSteps = 4,
+                            question = "헤어스타일은\n어떤가요?",
+                            options = listOf(
+                                ProfileCustomizeOption("앞머리가 있어요", "true"),
+                                ProfileCustomizeOption("앞머리가 없어요", "false")
+                            ),
+                            selectedCode = viewModel.draft.bangs?.toString(),
+                            optionsEnabled = true,
+                            onSelectOption = { code ->
+                                viewModel.setBangs(code.toBoolean())
+                                navController.navigate(Screen.ProfileCustomizeHairLength.route)
+                            },
+                            onBack = { navController.popBackStack() },
+                            onPrevStep = { navController.popBackStack() },
+                            onNextStep = viewModel.draft.bangs?.let {
+                                { navController.navigate(Screen.ProfileCustomizeHairLength.route) }
+                            }
+                        )
+                    }
+                    composable(Screen.ProfileCustomizeHairLength.route) { entry ->
+                        val viewModel = entry.sharedProfileCustomizeViewModel(navController)
+                        ProfileCustomizeStepScreen(
+                            step = 3,
+                            totalSteps = 4,
+                            question = "머리 길이는\n어떤가요?",
+                            options = listOf(
+                                ProfileCustomizeOption("긴 머리에요", "long"),
+                                ProfileCustomizeOption("짧은 머리에요", "short")
+                            ),
+                            selectedCode = viewModel.draft.hairLength,
+                            optionsEnabled = true,
+                            onSelectOption = { code ->
+                                viewModel.setHairLength(code)
+                                navController.navigate(Screen.ProfileCustomizeHairColor.route)
+                            },
+                            onBack = { navController.popBackStack() },
+                            onPrevStep = { navController.popBackStack() },
+                            onNextStep = viewModel.draft.hairLength?.let {
+                                { navController.navigate(Screen.ProfileCustomizeHairColor.route) }
+                            }
+                        )
+                    }
+                    composable(Screen.ProfileCustomizeHairColor.route) { entry ->
+                        val viewModel = entry.sharedProfileCustomizeViewModel(navController)
+                        val saving = viewModel.saveState is ProfileCustomizeSaveState.Loading
+                        ProfileCustomizeStepScreen(
+                            step = 4,
+                            totalSteps = 4,
+                            question = "머리 색은\n어떤 색인가요?",
+                            options = listOf(
+                                ProfileCustomizeOption("검은색이에요", "black"),
+                                ProfileCustomizeOption("갈색이에요", "brown")
+                            ),
+                            selectedCode = viewModel.draft.hairColor,
+                            optionsEnabled = !saving,
+                            onSelectOption = { code ->
+                                viewModel.setHairColor(code)
+                                viewModel.save {
+                                    navController.popBackStack(Screen.Settings.route, inclusive = false)
+                                }
+                            },
+                            onBack = { navController.popBackStack() },
+                            onPrevStep = { navController.popBackStack() },
+                            onNextStep = null,
+                            errorMessage = (viewModel.saveState as? ProfileCustomizeSaveState.Error)?.message
+                        )
+                    }
+                }
             }
         }
 
@@ -364,6 +470,16 @@ private fun NavBackStackEntry.sharedSignupViewModel(navController: NavHostContro
 private fun NavBackStackEntry.sharedSettingsViewModel(navController: NavHostController): SettingsViewModel {
     val parentEntry = remember(this) {
         navController.getBackStackEntry(Screen.Settings.route)
+    }
+    return viewModel(parentEntry)
+}
+
+// 이미지 커스터마이징 플로우(중첩 네비게이션 그래프) 내 4단계가 같은 ProfileCustomizeViewModel
+// 인스턴스를 공유하도록, 그래프의 시작 지점 백스택 엔트리에 스코프를 건다.
+@Composable
+private fun NavBackStackEntry.sharedProfileCustomizeViewModel(navController: NavHostController): ProfileCustomizeViewModel {
+    val parentEntry = remember(this) {
+        navController.getBackStackEntry(Screen.ProfileCustomizeGraph.route)
     }
     return viewModel(parentEntry)
 }

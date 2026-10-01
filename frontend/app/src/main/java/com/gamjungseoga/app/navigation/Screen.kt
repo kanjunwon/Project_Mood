@@ -32,4 +32,11 @@ sealed class Screen(val route: String) {
     data object DiaryWhere : Screen("diary/where")
     data object DiaryGenerating : Screen("diary/generating")
     data object DiaryComplete : Screen("diary/complete")
+
+    // 이미지 커스터마이징 플로우 (설정 화면의 "이미지 커스터마이징 → 변경하기"로 진입하는 중첩 네비게이션 그래프)
+    data object ProfileCustomizeGraph : Screen("profile-customize")
+    data object ProfileCustomizeGlasses : Screen("profile-customize/glasses")
+    data object ProfileCustomizeBangs : Screen("profile-customize/bangs")
+    data object ProfileCustomizeHairLength : Screen("profile-customize/hair-length")
+    data object ProfileCustomizeHairColor : Screen("profile-customize/hair-color")
 }

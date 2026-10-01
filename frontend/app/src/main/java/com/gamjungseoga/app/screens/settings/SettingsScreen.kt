@@ -66,6 +66,7 @@ private fun formatBirthDate(raw: String): String = raw.replace('-', '.')
 fun SettingsScreen(
     onEmotionTestClick: () -> Unit = {},
     onLoginScreenClick: () -> Unit = {},
+    onProfileCustomizeClick: () -> Unit = {},
     onGenderChangeClick: () -> Unit = {},
     onJobChangeClick: () -> Unit = {},
     onBirthDateChangeClick: () -> Unit = {},
@@ -124,7 +125,8 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Filled.AutoFixHigh,
                     title = "이미지\n커스터마이징",
-                    buttonText = "변경하기"
+                    buttonText = "변경하기",
+                    onClick = onProfileCustomizeClick
                 )
                 FeatureCard(
                     modifier = Modifier.weight(1f),
