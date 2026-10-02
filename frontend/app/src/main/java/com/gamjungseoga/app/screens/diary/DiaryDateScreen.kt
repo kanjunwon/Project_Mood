@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
-import com.gamjungseoga.app.network.parseServerDateTime
+import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.SolidGreen
@@ -46,12 +46,13 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 // GET /diaries/me 목록에서 각 일기의 created_at/image_url을 뽑아 날짜별 썸네일 맵으로 변환.
-// 같은 날짜에 일기가 여러 개면 가장 최근 것 하나만 쓴다(먼저 만난 것을 우선하고 이후 같은 날짜는
-// 덮어쓰지 않는 방식이라, created_at 내림차순으로 미리 정렬해둔다).
+// created_at은 UTC로 내려오므로 한국 시간 기준으로 변환한 뒤 날짜를 뽑아야 캘린더 셀 날짜와
+// 맞는다. 같은 날짜에 일기가 여러 개면 가장 최근 것 하나만 쓴다(먼저 만난 것을 우선하고 이후
+// 같은 날짜는 덮어쓰지 않는 방식이라, created_at 내림차순으로 미리 정렬해둔다).
 fun buildDayImageUrls(diaries: List<DiaryEntry>): Map<LocalDate, String> {
     val result = LinkedHashMap<LocalDate, String>()
     diaries.sortedByDescending { it.createdAt ?: "" }.forEach { entry ->
-        val created = parseServerDateTime(entry.createdAt) ?: return@forEach
+        val created = parseServerDateTimeInSeoul(entry.createdAt) ?: return@forEach
         val url = ApiClient.resolveImageUrl(entry.imageUrl) ?: return@forEach
         val date = created.toLocalDate()
         if (date !in result) result[date] = url

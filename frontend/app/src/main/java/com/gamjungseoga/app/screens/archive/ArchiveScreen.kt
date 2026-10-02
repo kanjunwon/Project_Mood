@@ -44,7 +44,8 @@ import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.emotion.drawableForEmotion
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
-import com.gamjungseoga.app.network.parseServerDateTime
+import com.gamjungseoga.app.network.SEOUL_ZONE
+import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import com.gamjungseoga.app.ui.theme.BodyGray
@@ -59,26 +60,29 @@ import java.time.format.DateTimeFormatter
 private val archiveHeaderDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM")
 private val archiveCardDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
 
-// created_at은 Supabase가 ISO 8601(timestamptz)로 내려줌. parseServerDateTime이 파싱에 실패하면
-// (로그는 그쪽에서 남김) 원본 앞 10자리로 대체한다.
+// created_at은 Supabase가 UTC ISO 8601(timestamptz)로 내려줌. 한국 시간 기준 날짜를 보여줘야
+// 하므로 parseServerDateTimeInSeoul로 변환한 뒤 포맷한다. 파싱에 실패하면(로그는 그쪽에서 남김)
+// 원본 앞 10자리로 대체한다.
 private fun formatArchiveDate(createdAt: String?): String {
     if (createdAt == null) return ""
-    return parseServerDateTime(createdAt)?.format(archiveCardDateFormatter)
+    return parseServerDateTimeInSeoul(createdAt)?.format(archiveCardDateFormatter)
         ?: createdAt.take(10).replace("-", ".")
 }
 
 private fun archiveTitle(entry: DiaryEntry): String =
     entry.topEmotion?.let { "${it} 날" } ?: "기록한 날"
 
-// entry의 created_at을 파싱해서 선택한 연/월과 같은 달인지 확인 (파싱 실패한 항목은 어느 달에도 안 걸림)
+// entry의 created_at을 한국 시간 기준으로 파싱해서 선택한 연/월과 같은 달인지 확인
+// (파싱 실패한 항목은 어느 달에도 안 걸림)
 private fun DiaryEntry.isInMonth(yearMonth: YearMonth): Boolean {
-    val created = parseServerDateTime(createdAt) ?: return false
+    val created = parseServerDateTimeInSeoul(createdAt) ?: return false
     return YearMonth.from(created) == yearMonth
 }
 
 @Composable
 fun ArchiveScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
-    var selectedYearMonth by remember { mutableStateOf(YearMonth.now()) }
+    // 일기는 한국 시간 기준으로 월별 그룹핑되므로, 처음 보여줄 "이번 달"도 한국 시간 기준이어야 한다.
+    var selectedYearMonth by remember { mutableStateOf(YearMonth.now(SEOUL_ZONE)) }
     var showDatePicker by remember { mutableStateOf(false) }
     val listState = diaryListViewModel.state
     val monthEntries = remember(listState, selectedYearMonth) {

@@ -57,7 +57,8 @@ import coil.compose.AsyncImage
 import kotlin.math.abs
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
-import com.gamjungseoga.app.network.parseServerDateTime
+import com.gamjungseoga.app.network.SEOUL_ZONE
+import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import java.time.YearMonth
@@ -107,12 +108,13 @@ private val monthlyEmotionImageRes = listOf(R.drawable.emotion_card_1, R.drawabl
 private fun computeMonthlyEmotions(diaries: List<DiaryEntry>): List<MonthlyEmotion> {
     val entriesByMonth = diaries
         .mapNotNull { entry ->
-            val created = parseServerDateTime(entry.createdAt)
+            val created = parseServerDateTimeInSeoul(entry.createdAt)
             created?.let { YearMonth.from(it) to entry }
         }
         .groupBy({ it.first }, { it.second })
 
-    val currentMonth = YearMonth.now()
+    // 일기는 한국 시간 기준으로 묶었으니 "이번 달" 기준도 한국 시간이어야 경계가 어긋나지 않는다.
+    val currentMonth = YearMonth.now(SEOUL_ZONE)
     return (0..2).map { monthsAgo ->
         val yearMonth = currentMonth.minusMonths(monthsAgo.toLong())
         val topEmotionCounts = entriesByMonth[yearMonth].orEmpty()
@@ -144,7 +146,7 @@ private val recentPageDateFormatter = DateTimeFormatter.ofPattern("MMM", Locale.
 
 // imageUrl이 있으면 DiaryPageCard가 그 위에 실제 이미지를 그리고, 없으면 색상만 순환시켜 카드로 표시.
 private fun DiaryEntry.toDiaryPage(index: Int): DiaryPage {
-    val created = parseServerDateTime(createdAt)
+    val created = parseServerDateTimeInSeoul(createdAt)
     return DiaryPage(
         dateTop = created?.format(recentPageDateFormatter)?.uppercase(Locale.ENGLISH) ?: "-",
         dateBottom = created?.dayOfMonth?.toString() ?: "-",
