@@ -39,6 +39,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.gamjungseoga.app.network.ApiClient
+import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.limitErrorMessageLength
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
@@ -219,7 +221,7 @@ fun hasValidPasswordLength(password: String): Boolean = password.length in 8..64
 fun hasValidNicknameLength(nickname: String): Boolean = nickname.length in 2..20
 
 // 로그인/회원가입 화면 공용 네트워크 에러 문구 (DiaryViewModel.describeError와 같은 패턴)
-fun describeAuthError(e: Exception): String = when (e) {
+fun describeAuthError(e: Exception): String = limitErrorMessageLength(when (e) {
     is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
     is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
     is SocketTimeoutException, is TimeoutException ->
@@ -228,9 +230,8 @@ fun describeAuthError(e: Exception): String = when (e) {
         if (e.code() == 401) {
             "이메일 또는 비밀번호가 올바르지 않아요."
         } else {
-            val body = e.response()?.errorBody()?.string()?.take(300)
-            "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
+            describeHttpException(e)
         }
     }
     else -> e.message ?: "요청에 실패했어요 (${e::class.simpleName})."
-}
+})

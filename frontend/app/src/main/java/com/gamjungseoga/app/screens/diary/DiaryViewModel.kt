@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryGenerateRequest
 import com.gamjungseoga.app.network.DiaryGenerateResponse
+import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.limitErrorMessageLength
 import java.net.ConnectException
 import java.net.UnknownHostException
 import java.time.LocalDate
@@ -102,7 +104,7 @@ class DiaryViewModel : ViewModel() {
 }
 
 // 개발 중 백엔드 연결 문제를 바로 알아볼 수 있게, 흔한 네트워크 예외를 원인이 드러나는 문구로 바꿔준다.
-private fun describeError(e: Exception): String = when (e) {
+private fun describeError(e: Exception): String = limitErrorMessageLength(when (e) {
     is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
     is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
     is java.net.SocketTimeoutException, is TimeoutException ->
@@ -112,12 +114,11 @@ private fun describeError(e: Exception): String = when (e) {
             // 504/524: 이미지 생성이 오래 걸려 중간에 연결이 끊긴 경우
             "그림을 그리는 데 시간이 오래 걸리고 있어요. 다시 시도해주세요."
         } else {
-            val body = e.response()?.errorBody()?.string()?.take(300)
-            "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
+            describeHttpException(e)
         }
     }
     else -> e.message ?: "일기 생성에 실패했어요 (${e::class.simpleName})."
-}
+})
 
 private val whenDateFormatter = DateTimeFormatter.ofPattern("M월 d일")
 

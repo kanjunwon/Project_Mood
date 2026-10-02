@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.UserProfileRequest
+import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.limitErrorMessageLength
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -96,14 +98,11 @@ class ProfileCustomizeViewModel : ViewModel() {
     }
 }
 
-private fun describeProfileSaveError(e: Exception): String = when (e) {
+private fun describeProfileSaveError(e: Exception): String = limitErrorMessageLength(when (e) {
     is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
     is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
     is SocketTimeoutException, is TimeoutException ->
         "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
-    is HttpException -> {
-        val body = e.response()?.errorBody()?.string()?.take(300)
-        "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
-    }
+    is HttpException -> describeHttpException(e)
     else -> e.message ?: "저장에 실패했어요 (${e::class.simpleName})."
-}
+})

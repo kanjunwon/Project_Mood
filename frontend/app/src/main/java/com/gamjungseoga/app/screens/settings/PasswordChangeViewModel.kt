@@ -7,7 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.UpdatePasswordRequest
-import com.google.gson.JsonParser
+import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.extractDetailMessage
+import com.gamjungseoga.app.network.limitErrorMessageLength
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -70,26 +72,18 @@ class PasswordChangeViewModel : ViewModel() {
     }
 }
 
-private fun describePasswordChangeError(e: Exception): String = when (e) {
+private fun describePasswordChangeError(e: Exception): String = limitErrorMessageLength(when (e) {
     is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
     is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
     is SocketTimeoutException, is TimeoutException ->
         "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
     is HttpException -> {
-        val body = e.response()?.errorBody()?.string()
         if (e.code() == 401) {
-            extractDetailMessage(body) ?: "현재 비밀번호가 일치하지 않아요."
+            val rawBody = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
+            extractDetailMessage(rawBody) ?: "현재 비밀번호가 일치하지 않아요."
         } else {
-            "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": ${body.take(300)}" else ""
+            describeHttpException(e)
         }
     }
     else -> e.message ?: "저장에 실패했어요 (${e::class.simpleName})."
-}
-
-// FastAPI가 HTTPException(detail=...)로 내려주는 형태({"detail": "..."})에서 메시지만 뽑아낸다.
-private fun extractDetailMessage(body: String?): String? {
-    if (body.isNullOrBlank()) return null
-    return runCatching {
-        JsonParser.parseString(body).asJsonObject.get("detail")?.asString
-    }.getOrNull()
-}
+})
