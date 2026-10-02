@@ -74,7 +74,9 @@ import com.gamjungseoga.app.screens.settings.ChipSelectScreen
 import com.gamjungseoga.app.screens.settings.GenderScreen
 import com.gamjungseoga.app.screens.settings.JobScreen
 import com.gamjungseoga.app.screens.settings.PasswordChangeScreen
+import com.gamjungseoga.app.screens.settings.PrivacyPolicyScreen
 import com.gamjungseoga.app.screens.settings.SettingsScreen
+import com.gamjungseoga.app.screens.settings.TermsOfServiceScreen
 import com.gamjungseoga.app.screens.settings.SettingsViewModel
 import com.gamjungseoga.app.screens.settings.genderOptions
 import com.gamjungseoga.app.screens.settings.jobOptions
@@ -184,6 +186,8 @@ fun GamjeongseogaApp() {
                         onJobChangeClick = { navController.navigate(Screen.JobChange.route) },
                         onBirthDateChangeClick = { navController.navigate(Screen.BirthDateChange.route) },
                         onPasswordChangeClick = { navController.navigate(Screen.PasswordChange.route) },
+                        onPrivacyPolicyClick = { navController.navigate(Screen.PrivacyPolicy.route) },
+                        onTermsOfServiceClick = { navController.navigate(Screen.TermsOfService.route) },
                         onLoggedOut = {
                             navController.navigate(Screen.Login.route) {
                                 popUpTo(navController.graph.id) { inclusive = true }
@@ -228,6 +232,12 @@ fun GamjeongseogaApp() {
                         onBack = { navController.popBackStack() },
                         onSaved = { navController.popBackStack() }
                     )
+                }
+                composable(Screen.PrivacyPolicy.route) {
+                    PrivacyPolicyScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Screen.TermsOfService.route) {
+                    TermsOfServiceScreen(onBack = { navController.popBackStack() })
                 }
                 composable(Screen.Login.route) {
                     LoginScreen(

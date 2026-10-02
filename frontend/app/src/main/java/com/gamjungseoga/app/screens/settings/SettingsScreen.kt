@@ -61,11 +61,6 @@ private data class SettingsRow(
     val onClick: () -> Unit = {}
 )
 
-private val termsRows = listOf(
-    SettingsRow("개인정보처리방침"),
-    SettingsRow("이용약관 확인")
-)
-
 // 서버가 생년월일을 "YYYY-MM-DD"로 내려주는데, 피그마 표시 형식은 점 구분("2002.01.18")이라 변환.
 private fun formatBirthDate(raw: String): String = raw.replace('-', '.')
 
@@ -77,9 +72,15 @@ fun SettingsScreen(
     onJobChangeClick: () -> Unit = {},
     onBirthDateChangeClick: () -> Unit = {},
     onPasswordChangeClick: () -> Unit = {},
+    onPrivacyPolicyClick: () -> Unit = {},
+    onTermsOfServiceClick: () -> Unit = {},
     onLoggedOut: () -> Unit = {},
     settingsViewModel: SettingsViewModel = viewModel()
 ) {
+    val termsRows = listOf(
+        SettingsRow("개인정보처리방침", onClick = onPrivacyPolicyClick),
+        SettingsRow("이용약관 확인", onClick = onTermsOfServiceClick)
+    )
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val deleteState = settingsViewModel.deleteAccountState

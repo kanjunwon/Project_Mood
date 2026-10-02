@@ -207,12 +207,14 @@ private val personPillPalette = listOf(RibbonPink to PillPinkBg, AccentGreen to 
 private val placePillPalette = listOf(AccentNavy to PillBlueBg, AccentPurple to PillPurpleBg, AccentBlue to PillBlueBg)
 
 // top_companion/top_place의 top3_emotions는 점수 합산값이라 진짜 "횟수"는 아니지만, 배지에 쓸
-// 정수가 필요해서 반올림해서 씀 (정확한 횟수가 필요하면 백엔드가 별도 필드로 내려줘야 함)
+// 정수가 필요해서 반올림해서 씀 (정확한 횟수가 필요하면 백엔드가 별도 필드로 내려줘야 함).
+// 반올림해서 0회가 되는 항목은 배지로 보여줄 의미가 없어서 제외.
 private fun toPills(scores: List<EmotionScore>, palette: List<Pair<Color, Color>>): List<PillStat> =
-    scores.mapIndexed { index, item ->
-        val (dot, bg) = palette[index % palette.size]
-        PillStat(label = item.emotion, count = item.score.roundToInt().coerceAtLeast(0), dotColor = dot, bgColor = bg)
-    }
+    scores.filter { it.score.roundToInt() > 0 }
+        .mapIndexed { index, item ->
+            val (dot, bg) = palette[index % palette.size]
+            PillStat(label = item.emotion, count = item.score.roundToInt(), dotColor = dot, bgColor = bg)
+        }
 
 private data class EmotionCategory(val label: String, val color: Color)
 
@@ -1097,29 +1099,32 @@ private fun PersonPlaceCard(
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily),
                 color = Color.Black
             )
-            Spacer(Modifier.height(16.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                pills.forEach { pill ->
-                    Row(
-                        modifier = Modifier
-                            .background(pill.bgColor, RoundedCornerShape(64.dp))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
+            // 0회로 걸러지고 남은 pill이 하나도 없으면(= 모든 항목이 0회였으면) 줄 자체를 숨김.
+            if (pills.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    pills.forEach { pill ->
+                        Row(
                             modifier = Modifier
-                                .size(10.dp)
-                                .background(pill.dotColor, CircleShape)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${pill.label} ${pill.count}회",
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily),
-                            color = Color.Black
-                        )
+                                .background(pill.bgColor, RoundedCornerShape(64.dp))
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(pill.dotColor, CircleShape)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${pill.label} ${pill.count}회",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily),
+                                color = Color.Black
+                            )
+                        }
                     }
                 }
             }

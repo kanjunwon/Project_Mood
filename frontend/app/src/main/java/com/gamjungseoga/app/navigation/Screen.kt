@@ -17,6 +17,9 @@ sealed class Screen(val route: String) {
     data object JobChange : Screen("settings/job")
     data object BirthDateChange : Screen("settings/birthdate")
     data object PasswordChange : Screen("settings/password")
+    // 설정 화면의 "개인정보처리방침" / "이용약관 확인" 행에서 진입하는 전문 화면
+    data object PrivacyPolicy : Screen("settings/privacy-policy")
+    data object TermsOfService : Screen("settings/terms-of-service")
 
     // 로그인 / 회원가입 플로우
     data object Login : Screen("login")

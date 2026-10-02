@@ -37,12 +37,12 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
+import com.gamjungseoga.app.network.parseServerDateTime
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.SolidGreen
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import java.time.LocalDate
-import java.time.OffsetDateTime
 import java.time.YearMonth
 
 // GET /diaries/me 목록에서 각 일기의 created_at/image_url을 뽑아 날짜별 썸네일 맵으로 변환.
@@ -51,7 +51,7 @@ import java.time.YearMonth
 fun buildDayImageUrls(diaries: List<DiaryEntry>): Map<LocalDate, String> {
     val result = LinkedHashMap<LocalDate, String>()
     diaries.sortedByDescending { it.createdAt ?: "" }.forEach { entry ->
-        val created = entry.createdAt?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() } ?: return@forEach
+        val created = parseServerDateTime(entry.createdAt) ?: return@forEach
         val url = ApiClient.resolveImageUrl(entry.imageUrl) ?: return@forEach
         val date = created.toLocalDate()
         if (date !in result) result[date] = url

@@ -44,6 +44,7 @@ import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.emotion.drawableForEmotion
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
+import com.gamjungseoga.app.network.parseServerDateTime
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import com.gamjungseoga.app.ui.theme.BodyGray
@@ -52,21 +53,18 @@ import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
-import java.time.OffsetDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 private val archiveHeaderDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM")
 private val archiveCardDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
 
-// created_at은 Supabase가 ISO 8601(timestamptz)로 내려줌. 파싱 실패하면 원본 앞 10자리로 대체.
+// created_at은 Supabase가 ISO 8601(timestamptz)로 내려줌. parseServerDateTime이 파싱에 실패하면
+// (로그는 그쪽에서 남김) 원본 앞 10자리로 대체한다.
 private fun formatArchiveDate(createdAt: String?): String {
     if (createdAt == null) return ""
-    return try {
-        OffsetDateTime.parse(createdAt).format(archiveCardDateFormatter)
-    } catch (_: Exception) {
-        createdAt.take(10).replace("-", ".")
-    }
+    return parseServerDateTime(createdAt)?.format(archiveCardDateFormatter)
+        ?: createdAt.take(10).replace("-", ".")
 }
 
 private fun archiveTitle(entry: DiaryEntry): String =
@@ -74,7 +72,7 @@ private fun archiveTitle(entry: DiaryEntry): String =
 
 // entry의 created_at을 파싱해서 선택한 연/월과 같은 달인지 확인 (파싱 실패한 항목은 어느 달에도 안 걸림)
 private fun DiaryEntry.isInMonth(yearMonth: YearMonth): Boolean {
-    val created = createdAt?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() } ?: return false
+    val created = parseServerDateTime(createdAt) ?: return false
     return YearMonth.from(created) == yearMonth
 }
 
