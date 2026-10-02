@@ -124,7 +124,8 @@ private fun computeMonthlyEmotions(diaries: List<DiaryEntry>): List<MonthlyEmoti
             month = "${yearMonth.monthValue}월의 감정",
             emotion = topEmotion?.key ?: "기록 없음",
             count = "${topEmotion?.value ?: 0}회 기록",
-            imageRes = monthlyEmotionImageRes.getOrNull(monthsAgo)
+            // 그 달에 기록이 없으면 샘플 일러스트도 넣지 않는다 (이미지 영역은 MonthlyEmotionCard에서 배경색만 보이게 처리됨)
+            imageRes = if (topEmotion != null) monthlyEmotionImageRes.getOrNull(monthsAgo) else null
         )
     }
 }
