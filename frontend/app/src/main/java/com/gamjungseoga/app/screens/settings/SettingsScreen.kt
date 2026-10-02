@@ -24,20 +24,27 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.SentimentSatisfied
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gamjungseoga.app.ui.theme.AccentTerracotta
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
@@ -65,14 +72,26 @@ private fun formatBirthDate(raw: String): String = raw.replace('-', '.')
 @Composable
 fun SettingsScreen(
     onEmotionTestClick: () -> Unit = {},
-    onLoginScreenClick: () -> Unit = {},
     onProfileCustomizeClick: () -> Unit = {},
     onGenderChangeClick: () -> Unit = {},
     onJobChangeClick: () -> Unit = {},
     onBirthDateChangeClick: () -> Unit = {},
     onPasswordChangeClick: () -> Unit = {},
+    onLoggedOut: () -> Unit = {},
     settingsViewModel: SettingsViewModel = viewModel()
 ) {
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val deleteState = settingsViewModel.deleteAccountState
+    val isDeleting = deleteState is DeleteAccountState.Loading
+    val deleteErrorMessage = (deleteState as? DeleteAccountState.Error)?.message
+
+    // 탈퇴 요청이 실패하면 에러 문구는 설정 화면에 머물며 보여주므로, 다이얼로그는 닫는다.
+    LaunchedEffect(deleteState) {
+        if (deleteState is DeleteAccountState.Error) {
+            showDeleteDialog = false
+        }
+    }
     // 로딩 중이거나 실패하면(예: 아직 로그인 전이라 401) 0으로 표시.
     val stats = (settingsViewModel.statsState as? StatsState.Loaded)?.stats
     val daysCount = stats?.daysSinceStart ?: 0
@@ -151,28 +170,152 @@ fun SettingsScreen(
         items(termsRows) { row ->
             SettingsListRow(row)
         }
-        item {
-            // 개발용 임시 버튼: 로그인 화면을 테스트하기 위한 것으로, 앱 시작 흐름(로그인 여부에
-            // 따른 분기)이 붙으면 삭제한다.
-            Spacer(Modifier.height(32.dp))
-            PillButton(
-                text = "로그인 화면 열기 (개발용)",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                onClick = onLoginScreenClick
-            )
+        if (deleteErrorMessage != null) {
+            item {
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    deleteErrorMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MonthLabelGray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+            }
         }
         item {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(32.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                PillButton(text = "로그아웃", modifier = Modifier.weight(1f))
-                PillButton(text = "계정탈퇴", modifier = Modifier.weight(1f))
+                PillButton(
+                    text = "로그아웃",
+                    modifier = Modifier.weight(1f),
+                    enabled = !isDeleting,
+                    onClick = { showLogoutDialog = true }
+                )
+                PillButton(
+                    text = "계정탈퇴",
+                    modifier = Modifier.weight(1f),
+                    enabled = !isDeleting,
+                    onClick = { showDeleteDialog = true }
+                )
+            }
+        }
+    }
+
+    if (showLogoutDialog) {
+        ConfirmDialog(
+            title = "로그아웃 하시겠어요?",
+            message = "다시 로그인하면 이어서 사용할 수 있어요.",
+            confirmText = "로그아웃",
+            confirmColor = SolidGreen,
+            onConfirm = {
+                showLogoutDialog = false
+                settingsViewModel.logout()
+                onLoggedOut()
+            },
+            onDismiss = { showLogoutDialog = false }
+        )
+    }
+
+    if (showDeleteDialog) {
+        ConfirmDialog(
+            title = "계정을 탈퇴하시겠어요?",
+            message = "작성한 일기와 검사 결과가 모두 삭제되며, 이 작업은 되돌릴 수 없어요.",
+            confirmText = "탈퇴하기",
+            confirmColor = AccentTerracotta,
+            loading = isDeleting,
+            onConfirm = {
+                settingsViewModel.deleteAccount(onSuccess = {
+                    showDeleteDialog = false
+                    onLoggedOut()
+                })
+            },
+            onDismiss = { if (!isDeleting) showDeleteDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun ConfirmDialog(
+    title: String,
+    message: String,
+    confirmText: String,
+    confirmColor: Color,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    cancelText: String = "취소",
+    loading: Boolean = false
+) {
+    Dialog(onDismissRequest = { if (!loading) onDismiss() }) {
+        Surface(
+            color = SurfaceColor,
+            shape = RoundedCornerShape(32.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TitleBrown,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MonthLabelGray,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        onClick = onDismiss,
+                        enabled = !loading,
+                        color = CalendarCellGray,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                            Text(cancelText, style = MaterialTheme.typography.bodyMedium, color = MonthLabelGray)
+                        }
+                    }
+                    Surface(
+                        onClick = onConfirm,
+                        enabled = !loading,
+                        color = if (loading) confirmColor.copy(alpha = 0.5f) else confirmColor,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                            if (loading) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            } else {
+                                Text(confirmText, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -312,15 +455,25 @@ private fun SettingsListRow(row: SettingsRow) {
 }
 
 @Composable
-private fun PillButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+private fun PillButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {}
+) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         color = CalendarCellGray,
         shape = RoundedCornerShape(50),
         modifier = modifier.height(56.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MonthLabelGray)
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) MonthLabelGray else MonthLabelGray.copy(alpha = 0.5f)
+            )
         }
     }
 }

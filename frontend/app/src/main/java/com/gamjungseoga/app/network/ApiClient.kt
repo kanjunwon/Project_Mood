@@ -9,7 +9,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 object ApiClient {
     // RunPod에 띄운 백엔드 서버 주소. 포드를 재시작하면 주소가 바뀔 수 있으니 그때마다 교체.
-    const val BASE_URL = "https://ug6y88pdnvhvlt-8000.proxy.runpod.net/"
+    const val BASE_URL = "https://4i8skq171cd9gf-8000.proxy.runpod.net/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -61,10 +61,13 @@ object ApiClient {
         .addInterceptor(loggingInterceptor)
         // OkHttp 기본 타임아웃(10초)은 /generate-diary가 KoBERT 감정분석 + SD3 이미지 생성을
         // 끝낼 때까지 기다리기엔 너무 짧아서 개발 중 요청이 SocketTimeoutException으로 끊긴다.
+        // /generate-diary 한 요청 안에서 LLaMA 일기 생성 -> KoBERT 감정분석 -> SD3 이미지 생성이
+        // 순차 실행되어 2분을 넘기는 경우가 흔해서, readTimeout 120초로는 서버가 아직 응답 중인데
+        // 클라이언트가 먼저 끊어버리는 문제가 있었다. 여유를 두고 늘림.
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(240, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(150, TimeUnit.SECONDS)
+        .callTimeout(300, TimeUnit.SECONDS)
         .build()
 
     private val retrofit = Retrofit.Builder()

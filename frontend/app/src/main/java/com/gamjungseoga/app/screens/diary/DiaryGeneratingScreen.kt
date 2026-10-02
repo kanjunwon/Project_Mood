@@ -41,22 +41,23 @@ import com.gamjungseoga.app.ui.theme.TitleBrown
 import kotlinx.coroutines.delay
 
 // 경과 시간(초) 기준으로 바뀌는 안내 문구. 실제 서버 진행 상황을 알 수 없어
-// (이미지 생성이 보통 97~98초 소요) 경험적으로 잡은 구간이며, 필요하면 여기만 조정하면 된다.
+// (LLaMA 일기 생성 -> KoBERT 감정분석 -> SD3 이미지 생성이 순차 실행되어 2분을 넘기는 경우가
+// 흔함) 경험적으로 잡은 구간이며, 필요하면 여기만 조정하면 된다.
 private data class GeneratingPhrase(val atSeconds: Int, val text: String)
 
 private val generatingPhrases = listOf(
     GeneratingPhrase(0, "작성한 일기를 바탕으로\n감정 일기를 생성하고 있어요"),
-    GeneratingPhrase(20, "감정을 분석하고 있어요"),
-    GeneratingPhrase(35, "감정에 어울리는 그림을\n그리고 있어요"),
-    GeneratingPhrase(90, "거의 다 됐어요\n조금만 기다려주세요")
+    GeneratingPhrase(35, "감정을 분석하고 있어요"),
+    GeneratingPhrase(65, "감정에 어울리는 그림을\n그리고 있어요"),
+    GeneratingPhrase(150, "거의 다 됐어요\n조금만 기다려주세요")
 )
 
 private const val MAX_RETRIES = 2
 private const val TICK_MILLIS = 200L
 
-// 100초 동안 0 -> 0.9까지 선형으로 차오르고, 100초가 지나도 응답이 없으면
+// 180초 동안 0 -> 0.9까지 선형으로 차오르고, 180초가 지나도 응답이 없으면
 // 0.9에서 초당 아주 조금씩만(0.97 한도) 움직여 멈춘 것처럼 보이지 않게 한다.
-private const val PROGRESS_RAMP_SECONDS = 100f
+private const val PROGRESS_RAMP_SECONDS = 180f
 private const val PROGRESS_RAMP_CAP = 0.9f
 private const val PROGRESS_CRAWL_CAP = 0.97f
 private const val PROGRESS_CRAWL_RATE_PER_SECOND = 0.0015f

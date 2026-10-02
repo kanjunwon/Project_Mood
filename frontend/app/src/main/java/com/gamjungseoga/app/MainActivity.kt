@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -28,6 +29,8 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.gamjungseoga.app.components.BottomNavBar
 import com.gamjungseoga.app.navigation.Screen
+import com.gamjungseoga.app.network.SessionManager
+import com.gamjungseoga.app.network.TokenStore
 import com.gamjungseoga.app.screens.analysis.AnalysisScreen
 import com.gamjungseoga.app.screens.archive.ArchiveScreen
 import com.gamjungseoga.app.screens.auth.LoginScreen
@@ -87,7 +90,30 @@ class MainActivity : ComponentActivity() {
 fun GamjeongseogaApp() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route ?: Screen.Home.route
+
+    // 토큰 확인(SharedPreferences 읽기)은 동기적으로 거의 즉시 끝나므로, NavHost가 첫 프레임을
+    // 그리기 전에 시작 화면을 한 번만 정해둔다. 그래서 "홈으로 시작했다가 로그인으로 바뀌는"
+    // 깜빡임 없이 바로 올바른 화면으로 시작한다.
+    val startDestination = remember {
+        if (TokenStore.getToken() != null) Screen.Home.route else Screen.Login.route
+    }
+    val currentRoute = backStackEntry?.destination?.route ?: startDestination
+
+    // 로그인 화면/회원가입 플로우에서는 로그인하지 않은 사용자가 하단 탭으로 홈/설정 등에
+    // 접근할 수 없도록 탭바 자체를 그리지 않는다.
+    val hideBottomBar = currentRoute == Screen.Login.route ||
+        currentRoute.startsWith(Screen.SignupGraph.route)
+
+    // refresh token이 없어 401이 뜨면 재로그인이 필요함. SessionManager가 신호를 보내면
+    // 백스택을 모두 비우고 로그인 화면으로 이동시킨다.
+    LaunchedEffect(navController) {
+        SessionManager.unauthorized.collect {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     // 앱 전체 배경: 바탕색 위에 화면(박스들)을 올리고, 맨 위에 종이 질감을 반투명 오버레이로 얹음.
     // (Multiply 블렌드는 밝은 배경 위에서 거의 안 보여서 일반 알파 블렌드로 변경)
@@ -100,31 +126,33 @@ fun GamjeongseogaApp() {
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             bottomBar = {
-                BottomNavBar(
-                    currentRoute = currentRoute,
-                    onNavigate = { route ->
-                        navController.navigate(route) {
-                            if (currentRoute.startsWith(Screen.DiaryGraph.route)) {
-                                // 일기작성 플로우(중첩 그래프) 안에서 하단 탭을 누른 경우:
-                                // saveState/restoreState 조합이 형제 그래프로 못 빠져나오는
-                                // 경우가 있어, 스택을 통째로 비우고 새로 진입한다.
-                                popUpTo(navController.graph.id) { inclusive = true }
-                            } else {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                restoreState = true
+                if (!hideBottomBar) {
+                    BottomNavBar(
+                        currentRoute = currentRoute,
+                        onNavigate = { route ->
+                            navController.navigate(route) {
+                                if (currentRoute.startsWith(Screen.DiaryGraph.route)) {
+                                    // 일기작성 플로우(중첩 그래프) 안에서 하단 탭을 누른 경우:
+                                    // saveState/restoreState 조합이 형제 그래프로 못 빠져나오는
+                                    // 경우가 있어, 스택을 통째로 비우고 새로 진입한다.
+                                    popUpTo(navController.graph.id) { inclusive = true }
+                                } else {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    restoreState = true
+                                }
+                                launchSingleTop = true
                             }
-                            launchSingleTop = true
+                        },
+                        onAddClick = {
+                            navController.navigate(Screen.DiaryGraph.route)
                         }
-                    },
-                    onAddClick = {
-                        navController.navigate(Screen.DiaryGraph.route)
-                    }
-                )
+                    )
+                }
             }
         ) { innerPadding ->
             NavHost(
                 navController = navController,
-                startDestination = Screen.Home.route,
+                startDestination = startDestination,
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable(Screen.Home.route) { HomeScreen() }
@@ -133,12 +161,17 @@ fun GamjeongseogaApp() {
                 composable(Screen.Settings.route) {
                     SettingsScreen(
                         onEmotionTestClick = { navController.navigate(Screen.EmotionTest.route) },
-                        onLoginScreenClick = { navController.navigate(Screen.Login.route) },
                         onProfileCustomizeClick = { navController.navigate(Screen.ProfileCustomizeGraph.route) },
                         onGenderChangeClick = { navController.navigate(Screen.GenderChange.route) },
                         onJobChangeClick = { navController.navigate(Screen.JobChange.route) },
                         onBirthDateChangeClick = { navController.navigate(Screen.BirthDateChange.route) },
-                        onPasswordChangeClick = { navController.navigate(Screen.PasswordChange.route) }
+                        onPasswordChangeClick = { navController.navigate(Screen.PasswordChange.route) },
+                        onLoggedOut = {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
                     )
                 }
                 composable(Screen.GenderChange.route) { entry ->
@@ -181,7 +214,13 @@ fun GamjeongseogaApp() {
                 composable(Screen.Login.route) {
                     LoginScreen(
                         onSignupClick = { navController.navigate(Screen.SignupGraph.route) },
-                        onLoginSuccess = { navController.popBackStack() }
+                        onLoginSuccess = {
+                            // 로그인 성공 후 뒤로가기로 로그인 화면에 돌아올 수 없도록 백스택을 비운다.
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
                     )
                 }
                 composable(Screen.EmotionTest.route) {
