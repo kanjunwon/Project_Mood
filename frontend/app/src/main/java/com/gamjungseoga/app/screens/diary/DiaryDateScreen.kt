@@ -35,19 +35,36 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.gamjungseoga.app.network.ApiClient
+import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.SolidGreen
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.YearMonth
+
+// GET /diaries/me 목록에서 각 일기의 created_at/image_url을 뽑아 날짜별 썸네일 맵으로 변환.
+// 같은 날짜에 일기가 여러 개면 가장 최근 것 하나만 쓴다(먼저 만난 것을 우선하고 이후 같은 날짜는
+// 덮어쓰지 않는 방식이라, created_at 내림차순으로 미리 정렬해둔다).
+fun buildDayImageUrls(diaries: List<DiaryEntry>): Map<LocalDate, String> {
+    val result = LinkedHashMap<LocalDate, String>()
+    diaries.sortedByDescending { it.createdAt ?: "" }.forEach { entry ->
+        val created = entry.createdAt?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() } ?: return@forEach
+        val url = ApiClient.resolveImageUrl(entry.imageUrl) ?: return@forEach
+        val date = created.toLocalDate()
+        if (date !in result) result[date] = url
+    }
+    return result
+}
 
 @Composable
 fun DiaryDateScreen(
     initialDate: LocalDate,
     onDateSelected: (LocalDate) -> Unit,
-    // TODO: 백엔드 연동 후 선택된 달의 날짜별 기록 썸네일 URL(SD3 생성 이미지 등)을 채워서 전달.
-    // 값이 있는 날짜 칸은 이미지로, 없으면 지금처럼 빈 칸(CalendarCellGray)으로 표시됨.
+    // 선택된 달의 날짜별 기록 썸네일 URL(SD3 생성 이미지). buildDayImageUrls로 채움.
+    // 값이 있는 날짜 칸은 이미지로, 없거나 로딩 실패하면 빈 칸(CalendarCellGray)으로 표시됨.
     dayImageUrls: Map<LocalDate, String> = emptyMap()
 ) {
     var displayedMonth by remember { mutableStateOf(YearMonth.from(initialDate)) }

@@ -26,11 +26,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
+import androidx.navigation.NavType
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.gamjungseoga.app.components.BottomNavBar
 import com.gamjungseoga.app.navigation.Screen
 import com.gamjungseoga.app.network.SessionManager
 import com.gamjungseoga.app.network.TokenStore
+import com.gamjungseoga.app.network.needsPersonalTest
 import com.gamjungseoga.app.screens.analysis.AnalysisScreen
 import com.gamjungseoga.app.screens.archive.ArchiveScreen
 import com.gamjungseoga.app.screens.auth.LoginScreen
@@ -45,11 +48,15 @@ import com.gamjungseoga.app.screens.diary.DiaryCompleteScreen
 import com.gamjungseoga.app.screens.diary.DiaryDateScreen
 import com.gamjungseoga.app.screens.diary.DiaryGenerationState
 import com.gamjungseoga.app.screens.diary.DiaryGeneratingScreen
+import com.gamjungseoga.app.screens.diary.DiaryListState
+import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import com.gamjungseoga.app.screens.diary.DiaryQuestionScreen
 import com.gamjungseoga.app.screens.diary.DiaryViewModel
 import com.gamjungseoga.app.screens.diary.DiaryWhenScreen
 import com.gamjungseoga.app.screens.diary.DiaryWhoScreen
+import com.gamjungseoga.app.screens.diary.buildDayImageUrls
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestScreen
+import com.gamjungseoga.app.screens.emotiontest.EmotionTestSubmitState
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestViewModel
 import com.gamjungseoga.app.screens.emotiontest.emotionTestQuestions
 import com.gamjungseoga.app.screens.home.HomeScreen
@@ -115,6 +122,17 @@ fun GamjeongseogaApp() {
         }
     }
 
+    // 앱을 켤 때 이미 토큰이 있으면(= 홈으로 바로 시작) 퍼스널 검사 완료 여부 확인 때문에 시작이
+    // 느려지면 안 되므로, 일단 홈을 그대로 보여주고 백그라운드에서 상태만 확인한다. 미완료면
+    // 그제서야 강제 검사 화면으로 이동시킨다 (Unit 키라 앱 세션당 한 번만 실행됨).
+    LaunchedEffect(Unit) {
+        if (TokenStore.getToken() != null && needsPersonalTest()) {
+            navController.navigate(Screen.EmotionTest.routeFor(forced = true)) {
+                launchSingleTop = true
+            }
+        }
+    }
+
     // 앱 전체 배경: 바탕색 위에 화면(박스들)을 올리고, 맨 위에 종이 질감을 반투명 오버레이로 얹음.
     // (Multiply 블렌드는 밝은 배경 위에서 거의 안 보여서 일반 알파 블렌드로 변경)
     Box(
@@ -160,7 +178,7 @@ fun GamjeongseogaApp() {
                 composable(Screen.Analysis.route) { AnalysisScreen() }
                 composable(Screen.Settings.route) {
                     SettingsScreen(
-                        onEmotionTestClick = { navController.navigate(Screen.EmotionTest.route) },
+                        onEmotionTestClick = { navController.navigate(Screen.EmotionTest.routeFor(forced = false)) },
                         onProfileCustomizeClick = { navController.navigate(Screen.ProfileCustomizeGraph.route) },
                         onGenderChangeClick = { navController.navigate(Screen.GenderChange.route) },
                         onJobChangeClick = { navController.navigate(Screen.JobChange.route) },
@@ -214,17 +232,42 @@ fun GamjeongseogaApp() {
                 composable(Screen.Login.route) {
                     LoginScreen(
                         onSignupClick = { navController.navigate(Screen.SignupGraph.route) },
-                        onLoginSuccess = {
+                        onLoginSuccess = { needsPersonalTest ->
                             // 로그인 성공 후 뒤로가기로 로그인 화면에 돌아올 수 없도록 백스택을 비운다.
-                            navController.navigate(Screen.Home.route) {
+                            // 퍼스널 검사를 아직 안 했으면 홈 대신 강제 검사 화면으로 보낸다.
+                            val destination = if (needsPersonalTest) {
+                                Screen.EmotionTest.routeFor(forced = true)
+                            } else {
+                                Screen.Home.route
+                            }
+                            navController.navigate(destination) {
                                 popUpTo(navController.graph.id) { inclusive = true }
                                 launchSingleTop = true
                             }
                         }
                     )
                 }
-                composable(Screen.EmotionTest.route) {
+                composable(
+                    route = Screen.EmotionTest.route,
+                    arguments = listOf(
+                        navArgument(Screen.EmotionTest.ARG_FORCED) {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        }
+                    )
+                ) { entry ->
+                    val forced = entry.arguments?.getBoolean(Screen.EmotionTest.ARG_FORCED) ?: false
                     val emotionTestViewModel: EmotionTestViewModel = viewModel()
+                    val submitState = emotionTestViewModel.submitState
+
+                    // 강제 진입 흐름에서 검사를 마쳤을 때: 홈으로 이동하고 백스택을 비운다.
+                    val onForcedSuccess: () -> Unit = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+
                     EmotionTestScreen(
                         index = emotionTestViewModel.currentIndex,
                         total = emotionTestQuestions.size,
@@ -233,15 +276,31 @@ fun GamjeongseogaApp() {
                         onAnswerSelected = { value ->
                             emotionTestViewModel.selectAnswer(value)
                             if (emotionTestViewModel.currentIndex == emotionTestQuestions.lastIndex) {
-                                emotionTestViewModel.submitIfComplete()
-                                navController.popBackStack()
+                                if (forced) {
+                                    // 강제 진입: 전송 결과를 기다렸다가 성공했을 때만 이동 (실패하면
+                                    // 에러 + 재시도 버튼을 화면이 보여줌).
+                                    emotionTestViewModel.submitForced(onSuccess = onForcedSuccess)
+                                } else {
+                                    // 설정 "다시하기": 기존처럼 응답을 기다리지 않고 바로 닫음.
+                                    emotionTestViewModel.submitIfComplete()
+                                    navController.popBackStack()
+                                }
                             } else {
                                 emotionTestViewModel.goNext()
                             }
                         },
-                        onBack = { navController.popBackStack() },
+                        // 강제 진입이면 뒤로가기 버튼을 숨기고(onBack = null) 시스템 뒤로가기도 막는다.
+                        onBack = if (forced) null else { { navController.popBackStack() } },
                         onPrev = emotionTestViewModel::goPrev,
-                        onNext = emotionTestViewModel::goNext
+                        onNext = emotionTestViewModel::goNext,
+                        blockSystemBack = forced,
+                        isSubmitting = forced && submitState is EmotionTestSubmitState.Submitting,
+                        submitError = if (forced) (submitState as? EmotionTestSubmitState.Error)?.message else null,
+                        onRetrySubmit = if (forced) {
+                            { emotionTestViewModel.submitForced(onSuccess = onForcedSuccess) }
+                        } else {
+                            null
+                        }
                     )
                 }
 
@@ -334,12 +393,20 @@ fun GamjeongseogaApp() {
                 navigation(startDestination = Screen.DiaryDate.route, route = Screen.DiaryGraph.route) {
                     composable(Screen.DiaryDate.route) { entry ->
                         val diaryViewModel: DiaryViewModel = entry.sharedDiaryViewModel(navController)
+                        // 날짜 셀 썸네일용으로 일기 목록을 따로 불러옴 (Home/Archive와 같은
+                        // DiaryListViewModel 재사용 - 이 화면 전용 상태는 따로 둘 필요가 없음).
+                        val diaryListViewModel: DiaryListViewModel = viewModel()
+                        val diaryListState = diaryListViewModel.state
+                        val dayImageUrls = remember(diaryListState) {
+                            buildDayImageUrls((diaryListState as? DiaryListState.Loaded)?.diaries.orEmpty())
+                        }
                         DiaryDateScreen(
                             initialDate = diaryViewModel.draft.date,
                             onDateSelected = { date ->
                                 diaryViewModel.setDate(date)
                                 navController.navigate(Screen.DiaryWhat.route)
-                            }
+                            },
+                            dayImageUrls = dayImageUrls
                         )
                     }
                     composable(Screen.DiaryWhat.route) { entry ->

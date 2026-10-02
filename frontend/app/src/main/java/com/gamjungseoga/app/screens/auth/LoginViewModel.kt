@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.LoginRequest
 import com.gamjungseoga.app.network.TokenStore
+import com.gamjungseoga.app.network.needsPersonalTest
 import kotlinx.coroutines.launch
 
 data class LoginDraft(
@@ -45,7 +46,10 @@ class LoginViewModel : ViewModel() {
         draft = draft.copy(password = text)
     }
 
-    fun login(onSuccess: () -> Unit) {
+    // 로그인에 성공하면 홈으로 보내기 전에 퍼스널 감정 검사를 마쳤는지 확인해서, 미완료면
+    // onSuccess(needsPersonalTest = true)로 호출측(MainActivity)이 검사 화면으로 강제 진입시킬 수
+    // 있게 한다.
+    fun login(onSuccess: (needsPersonalTest: Boolean) -> Unit) {
         if (state is LoginState.Loading) return
         state = LoginState.Loading
 
@@ -56,7 +60,7 @@ class LoginViewModel : ViewModel() {
                 )
                 TokenStore.saveSession(response.accessToken, response.userId, response.nickname)
                 state = LoginState.Idle
-                onSuccess()
+                onSuccess(needsPersonalTest())
             } catch (e: Exception) {
                 state = LoginState.Error(describeAuthError(e))
             }

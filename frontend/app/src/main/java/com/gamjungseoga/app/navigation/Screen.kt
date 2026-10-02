@@ -5,7 +5,12 @@ sealed class Screen(val route: String) {
     data object Archive : Screen("archive")
     data object Analysis : Screen("analysis")
     data object Settings : Screen("settings")
-    data object EmotionTest : Screen("emotiontest")
+    // forced=true: 회원가입/로그인 직후 검사 미완료라서 강제로 들어온 경우 (뒤로가기로 못 빠져나감).
+    // forced=false(기본값): 설정의 "다시하기"로 들어온 경우 (지금처럼 자유롭게 나갈 수 있음).
+    data object EmotionTest : Screen("emotiontest?forced={forced}") {
+        const val ARG_FORCED = "forced"
+        fun routeFor(forced: Boolean) = "emotiontest?forced=$forced"
+    }
 
     // 설정 화면의 "성별 변경" / "직업 변경" / "생년월일 변경" / "비밀번호 변경" 행에서 진입하는 화면
     data object GenderChange : Screen("settings/gender")

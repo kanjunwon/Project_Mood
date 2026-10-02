@@ -23,7 +23,7 @@ import com.gamjungseoga.app.ui.theme.TitleBrown
 @Composable
 fun LoginScreen(
     onSignupClick: () -> Unit,
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (needsPersonalTest: Boolean) -> Unit,
     viewModel: LoginViewModel = viewModel()
 ) {
     val state = viewModel.state

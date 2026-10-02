@@ -1,5 +1,6 @@
 package com.gamjungseoga.app.screens.emotiontest
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,11 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,10 +45,19 @@ fun EmotionTestScreen(
     question: String,
     selectedAnswer: Int?,
     onAnswerSelected: (Int) -> Unit,
-    onBack: () -> Unit,
+    // null이면 뒤로가기 버튼을 아예 숨김 (강제 진입). 강제 진입일 때는 blockSystemBack도 true로
+    // 같이 넘겨서 시스템 뒤로가기 제스처/버튼도 막아야 함.
+    onBack: (() -> Unit)?,
     onPrev: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    blockSystemBack: Boolean = false,
+    isSubmitting: Boolean = false,
+    submitError: String? = null,
+    onRetrySubmit: (() -> Unit)? = null
 ) {
+    // enabled가 true인 동안은 시스템 뒤로가기(제스처/버튼)를 가로채서 아무것도 하지 않는다.
+    BackHandler(enabled = blockSystemBack) {}
+
     Column(modifier = Modifier.fillMaxSize()) {
         EmotionTestTopBar(onBack = onBack)
         Spacer(Modifier.height(24.dp))
@@ -54,8 +66,8 @@ fun EmotionTestScreen(
             total = total,
             onPrev = onPrev,
             onNext = onNext,
-            canGoPrev = index > 0,
-            canGoNext = index < total - 1 && selectedAnswer != null
+            canGoPrev = index > 0 && !isSubmitting,
+            canGoNext = index < total - 1 && selectedAnswer != null && !isSubmitting
         )
         Spacer(Modifier.height(40.dp))
         Text(
@@ -78,8 +90,39 @@ fun EmotionTestScreen(
                 EmotionTestOption(
                     label = label,
                     selected = selectedAnswer == value,
+                    enabled = !isSubmitting,
                     onClick = { onAnswerSelected(value) }
                 )
+            }
+        }
+        if (isSubmitting) {
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = ButtonMint, strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("결과를 저장하는 중이에요...", style = MaterialTheme.typography.labelSmall, color = MonthLabelGray)
+            }
+        }
+        if (submitError != null) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                submitError,
+                style = MaterialTheme.typography.labelSmall,
+                color = MonthLabelGray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+            )
+            if (onRetrySubmit != null) {
+                Spacer(Modifier.height(12.dp))
+                EmotionTestRetryButton(onClick = onRetrySubmit, modifier = Modifier.padding(horizontal = 14.dp))
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -87,20 +130,22 @@ fun EmotionTestScreen(
 }
 
 @Composable
-private fun EmotionTestTopBar(onBack: () -> Unit) {
+private fun EmotionTestTopBar(onBack: (() -> Unit)?) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(73.dp)
             .padding(horizontal = 8.dp)
     ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 37.dp)
-        ) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "뒤로", tint = TitleBrown)
+        if (onBack != null) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 37.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "뒤로", tint = TitleBrown)
+            }
         }
         Text(
             "퍼스널 감정 검사",
@@ -154,9 +199,10 @@ private fun EmotionTestProgressRow(
 }
 
 @Composable
-private fun EmotionTestOption(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun EmotionTestOption(label: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         color = if (selected) ButtonMint else Color.White,
         shape = RoundedCornerShape(16.dp),
         border = if (selected) null else BorderStroke(1.dp, CalendarCellGray),
@@ -170,6 +216,22 @@ private fun EmotionTestOption(label: String, selected: Boolean, onClick: () -> U
                 style = MaterialTheme.typography.titleMedium,
                 color = if (selected) Color.White else MonthLabelGray
             )
+        }
+    }
+}
+
+@Composable
+private fun EmotionTestRetryButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        color = ButtonMint,
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+            Text("다시 시도", style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
     }
 }

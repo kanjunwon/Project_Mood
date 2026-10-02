@@ -28,3 +28,10 @@ data class PersonalTestStatusResponse(
     val completed: Boolean,
     @SerializedName("last_completed_at") val lastCompletedAt: String? = null
 )
+
+// 로그인 직후/앱 시작 시 둘 다 같은 기준으로 "검사를 강제해야 하는가"를 판단하므로 공용 함수로 둠.
+// 상태 확인 자체가 실패하면(서버 다운 등) 검사를 강제하지 않는다 - 서버 장애로 앱을 아예 못 쓰게
+// 되는 상황을 막기 위함.
+suspend fun needsPersonalTest(): Boolean = runCatching {
+    !ApiClient.personalTestApi.getPersonalTestStatus().completed
+}.getOrDefault(false)
