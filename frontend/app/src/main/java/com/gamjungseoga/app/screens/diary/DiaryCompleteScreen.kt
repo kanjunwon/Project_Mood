@@ -34,7 +34,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.gamjungseoga.app.R
+import com.gamjungseoga.app.emotion.drawableForEmotion
+import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.ui.theme.AccentGreen
 import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.ChartMint
@@ -90,7 +93,7 @@ fun DiaryCompleteScreen(
         }
         item {
             Spacer(Modifier.height(16.dp))
-            HeroImageWithTag(topEmotion)
+            HeroImageWithTag(topEmotion, ApiClient.resolveImageUrl(result?.imageUrl))
         }
         item {
             Spacer(Modifier.height(20.dp))
@@ -146,12 +149,17 @@ fun DiaryCompleteScreen(
 }
 
 @Composable
-private fun HeroImageWithTag(topEmotion: String) {
+private fun HeroImageWithTag(topEmotion: String, imageUrl: String?) {
     Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Image(
-            painter = painterResource(R.drawable.header_illustration),
+        // SD3가 생성한 imageUrl이 있으면 그걸 보여주고, 없거나 로딩 실패하면 감정별 일러스트로 대체.
+        // 로딩 중에도 같은 일러스트를 placeholder로 보여줘서 자리가 비어 보이지 않게 함.
+        val fallback = painterResource(drawableForEmotion(topEmotion))
+        AsyncImage(
+            model = imageUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            placeholder = fallback,
+            error = fallback,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)

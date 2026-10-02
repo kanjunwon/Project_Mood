@@ -78,4 +78,16 @@ object ApiClient {
     val statsApi: StatsApi = retrofit.create(StatsApi::class.java)
     val authApi: AuthApi = retrofit.create(AuthApi::class.java)
     val userApi: UserApi = retrofit.create(UserApi::class.java)
+
+    // 백엔드가 이미지 URL을 전체 URL(예: Supabase Storage의 공개 URL)로 내려줄지, BASE_URL
+    // 기준 상대 경로("/storage/...")로 내려줄지 아직 Swagger로 확인하지 못했다. 둘 다
+    // 대응하도록, 이미 http(s)://로 시작하면 그대로 쓰고 아니면 BASE_URL을 붙여 절대 URL로
+    // 만든다. 실제 형태를 확인하면 이 분기는 필요 없어질 수 있음.
+    fun resolveImageUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
+            return url
+        }
+        return BASE_URL.trimEnd('/') + "/" + url.trimStart('/')
+    }
 }

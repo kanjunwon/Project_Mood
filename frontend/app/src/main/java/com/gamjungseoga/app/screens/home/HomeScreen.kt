@@ -55,6 +55,7 @@ import java.time.LocalDate
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlin.math.abs
+import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
@@ -119,13 +120,21 @@ private fun computeMonthlyEmotions(diaries: List<DiaryEntry>): List<MonthlyEmoti
             .groupingBy { it }
             .eachCount()
         val topEmotion = topEmotionCounts.maxByOrNull { it.value }
+        // 대표 감정(topEmotion)과 일치하는 그 달 일기 중 imageUrl이 있는 첫 번째 것을 대표 이미지로 삼음.
+        // "가장 많이 나온 감정의 일기 중 하나"라 어떤 걸 고르든 상관없어서 순서는 신경 쓰지 않음.
+        val representativeImageUrl = topEmotion?.let { (emotionLabel, _) ->
+            entriesByMonth[yearMonth].orEmpty()
+                .firstOrNull { it.topEmotion == emotionLabel && !it.imageUrl.isNullOrBlank() }
+                ?.imageUrl
+        }
 
         MonthlyEmotion(
             month = "${yearMonth.monthValue}월의 감정",
             emotion = topEmotion?.key ?: "기록 없음",
             count = "${topEmotion?.value ?: 0}회 기록",
             // 그 달에 기록이 없으면 샘플 일러스트도 넣지 않는다 (이미지 영역은 MonthlyEmotionCard에서 배경색만 보이게 처리됨)
-            imageRes = if (topEmotion != null) monthlyEmotionImageRes.getOrNull(monthsAgo) else null
+            imageRes = if (topEmotion != null) monthlyEmotionImageRes.getOrNull(monthsAgo) else null,
+            imageUrl = ApiClient.resolveImageUrl(representativeImageUrl)
         )
     }
 }
@@ -133,13 +142,14 @@ private fun computeMonthlyEmotions(diaries: List<DiaryEntry>): List<MonthlyEmoti
 private val recentPageColors = listOf(PlaceholderOcean, PlaceholderNavy, PlaceholderTerracotta)
 private val recentPageDateFormatter = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)
 
-// SD3 생성 이미지(imageUrl)가 아직 없어서, 실제 일기 목록도 색상만 순환시켜 카드로 표시.
+// imageUrl이 있으면 DiaryPageCard가 그 위에 실제 이미지를 그리고, 없으면 색상만 순환시켜 카드로 표시.
 private fun DiaryEntry.toDiaryPage(index: Int): DiaryPage {
     val created = createdAt?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
     return DiaryPage(
         dateTop = created?.format(recentPageDateFormatter)?.uppercase(Locale.ENGLISH) ?: "-",
         dateBottom = created?.dayOfMonth?.toString() ?: "-",
         color = recentPageColors[index % recentPageColors.size],
+        imageUrl = ApiClient.resolveImageUrl(imageUrl),
         showDateTag = true
     )
 }
@@ -377,10 +387,15 @@ private fun MonthlyEmotionCard(item: MonthlyEmotion, index: Int) {
                     .height(65.dp)
             ) {
                 if (item.imageUrl != null) {
+                    // 로딩 중/실패 시 샘플 일러스트(imageRes)가 있으면 그걸 보여주고, 없으면
+                    // 그냥 비워둬서(=카드 배경색만 보임) 깨진 이미지처럼 보이지 않게 함.
+                    val fallback = item.imageRes?.let { painterResource(it) }
                     AsyncImage(
                         model = item.imageUrl,
                         contentDescription = item.emotion,
                         contentScale = ContentScale.Crop,
+                        placeholder = fallback,
+                        error = fallback,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (item.imageRes != null) {
@@ -477,7 +492,9 @@ private fun DiaryPageCard(page: DiaryPage, index: Int, listState: LazyListState)
                 .height(cardHeight)
                 .background(page.color)
         ) {
-            // 백엔드가 이미지 URL을 주면 SD3 생성 이미지로, 없으면 위 color가 그대로 보임
+            // 백엔드가 이미지 URL을 주면 SD3 생성 이미지로, 없으면 위 color가 그대로 보임.
+            // 로딩 중이거나 실패해도 AsyncImage는 별도 error/placeholder 없이 아무것도 안 그리므로
+            // 뒤에 깔린 color 배경이 그대로 보여 화면이 깨지지 않음 (의도된 동작).
             if (page.imageUrl != null) {
                 AsyncImage(
                     model = page.imageUrl,

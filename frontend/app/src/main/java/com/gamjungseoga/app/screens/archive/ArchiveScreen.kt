@@ -1,6 +1,5 @@
 package com.gamjungseoga.app.screens.archive
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,8 +39,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.emotion.drawableForEmotion
+import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
@@ -159,11 +160,15 @@ private fun ArchiveHeader(yearMonth: YearMonth, onDateClick: () -> Unit) {
 @Composable
 private fun ArchiveCard(entry: DiaryEntry) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(
-            // SD3 생성 이미지가 붙기 전까지는 top_emotion 기준으로 가장 가까운 기존 일러스트로 대체
-            painter = painterResource(drawableForEmotion(entry.topEmotion)),
+        // entry.imageUrl(SD3 생성 이미지)이 있으면 그걸, 없거나 로딩 실패하면 top_emotion 기준
+        // 가장 가까운 기존 일러스트로 대체. 로딩 중에도 같은 일러스트를 보여줘서 빈 자리 방지.
+        val fallback = painterResource(drawableForEmotion(entry.topEmotion))
+        AsyncImage(
+            model = ApiClient.resolveImageUrl(entry.imageUrl),
             contentDescription = archiveTitle(entry),
             contentScale = ContentScale.Crop,
+            placeholder = fallback,
+            error = fallback,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(314f / 429f)

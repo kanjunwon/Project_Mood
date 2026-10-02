@@ -52,5 +52,9 @@ data class DiaryEntry(
     @SerializedName("top_emotion") val topEmotion: String? = null,
     @SerializedName("emotion_scores") val emotionScores: Map<String, Double>? = null,
     @SerializedName("sentiment_score") val sentimentScore: Double? = null,
-    @SerializedName("created_at") val createdAt: String? = null
+    @SerializedName("created_at") val createdAt: String? = null,
+    // SD3가 생성한 일기 이미지 URL로 추정되는 컬럼. 정확한 필드명은 백엔드 Swagger로 아직
+    // 확인 못 했으니, diary_entries 테이블에 이 컬럼이 없거나 이름이 다르면 그냥 null로 와서
+    // 기존 fallback(감정별 일러스트)이 그대로 쓰인다.
+    @SerializedName("image_url") val imageUrl: String? = null
 )
