@@ -62,10 +62,15 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.gamjungseoga.app.components.EmotionBar
+import com.gamjungseoga.app.components.EmotionSummaryCard
+import com.gamjungseoga.app.components.PersonPlaceInfoCard
+import com.gamjungseoga.app.components.TopEmotionsBarCard
 import com.gamjungseoga.app.components.WheelPicker
+import com.gamjungseoga.app.components.defaultEmotionBarMaxHeight
+import com.gamjungseoga.app.components.defaultEmotionBarPalette
 import com.gamjungseoga.app.ui.theme.AccentBlue
 import com.gamjungseoga.app.ui.theme.AccentGreen
 import com.gamjungseoga.app.ui.theme.AccentNavy
@@ -77,7 +82,6 @@ import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.ChartMint
 import com.gamjungseoga.app.ui.theme.EmptyGray
 import com.gamjungseoga.app.ui.theme.HighlightBlue
-import com.gamjungseoga.app.ui.theme.HighlightMint
 import com.gamjungseoga.app.ui.theme.LoverPink
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
@@ -104,24 +108,19 @@ private enum class ReportTab(val label: String) { DAILY("일간"), MONTHLY("월�
 private val analysisDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
 private val analysisMonthFormatter = DateTimeFormatter.ofPattern("yyyy.MM")
 
-data class TopEmotionBar(val label: String, val percent: Int, val barHeight: Dp, val color: Color)
-
-private val dailyBarColors = listOf(ChartMint, AccentGreen, RibbonPink)
-private val dailyBarMaxHeight = 138.dp
-
 private val monthlyBarColors = listOf(AccentBlue, AccentPurple, AccentNavy)
 
 // GET /stats/daily, /stats/monthly의 top3_emotions는 여러 일기의 점수를 그냥 합산한 값이라(1.0 안
 // 넘게 정규화돼있지 않음) 3개 막대끼리 상대 비중으로 다시 나눠서 60/30/10 같은 퍼센트를 만듦
-private fun toTopEmotionBars(scores: List<EmotionScore>, palette: List<Color> = dailyBarColors): List<TopEmotionBar> {
+private fun toTopEmotionBars(scores: List<EmotionScore>, palette: List<Color> = defaultEmotionBarPalette): List<EmotionBar> {
     val total = scores.sumOf { it.score }
     if (scores.isEmpty() || total <= 0) return emptyList()
     return scores.mapIndexed { index, item ->
         val percent = (item.score / total * 100).toInt().coerceIn(0, 100)
-        TopEmotionBar(
+        EmotionBar(
             label = item.emotion,
             percent = percent,
-            barHeight = dailyBarMaxHeight * (percent / 100f).coerceAtLeast(0.15f),
+            barHeight = defaultEmotionBarMaxHeight * (percent / 100f).coerceAtLeast(0.15f),
             color = palette[index % palette.size]
         )
     }
@@ -239,7 +238,7 @@ data class MonthlyReportData(
     val topEmotion: String,
     val topEmotionPercent: Int,
     val topEmotionColor: Color,
-    val topEmotions: List<TopEmotionBar>,
+    val topEmotions: List<EmotionBar>,
     val weeklyFlow: List<WeekPoint>,
     val dayColors: List<Color?>,
     val positiveFeltDate: String,
@@ -415,11 +414,16 @@ fun AnalysisScreen() {
                     val bars = toTopEmotionBars(stats.top3Emotions)
                     item {
                         Spacer(Modifier.height(24.dp))
-                        TodaySummaryCard(emotion = stats.topEmotion ?: "-", percent = bars.firstOrNull()?.percent ?: 0)
+                        EmotionSummaryCard(
+                            titlePrefix = "오늘 가장 많이 느낀 감정은\n",
+                            emotion = stats.topEmotion ?: "-",
+                            percent = bars.firstOrNull()?.percent ?: 0,
+                            fontFamily = SCoreDreamFontFamily
+                        )
                     }
                     item {
                         Spacer(Modifier.height(16.dp))
-                        TopEmotionsCard(bars)
+                        TopEmotionsBarCard(bars, fontFamily = SCoreDreamFontFamily)
                     }
                     item {
                         Spacer(Modifier.height(16.dp))
@@ -429,18 +433,20 @@ fun AnalysisScreen() {
                                 .padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            InfoCard(
+                            PersonPlaceInfoCard(
                                 modifier = Modifier.weight(1f),
                                 iconRes = R.drawable.analysis_person_icon,
                                 prefix = "오늘 함께한 사람은",
                                 highlight = stats.companions.firstOrNull() ?: "기록 없음",
+                                fontFamily = SCoreDreamFontFamily,
                                 suffix = "에요"
                             )
-                            InfoCard(
+                            PersonPlaceInfoCard(
                                 modifier = Modifier.weight(1f),
                                 iconRes = R.drawable.analysis_location_icon,
                                 prefix = "오늘 방문한 장소는",
                                 highlight = stats.places.firstOrNull() ?: "기록 없음",
+                                fontFamily = SCoreDreamFontFamily,
                                 suffix = "에요"
                             )
                         }
@@ -480,15 +486,17 @@ fun AnalysisScreen() {
                     val monthlyReport = toMonthlyReportData(selectedMonth, monthlyStats!!, positiveDayStats, negativeDayStats)
                     item {
                         Spacer(Modifier.height(24.dp))
-                        MonthlySummaryCard(
+                        EmotionSummaryCard(
+                            titlePrefix = "이번 달 가장 많이 느낀 감정은\n",
                             emotion = monthlyReport.topEmotion,
                             percent = monthlyReport.topEmotionPercent,
+                            fontFamily = SCoreDreamFontFamily,
                             emotionColor = monthlyReport.topEmotionColor
                         )
                     }
                     item {
                         Spacer(Modifier.height(16.dp))
-                        TopEmotionsCard(monthlyReport.topEmotions)
+                        TopEmotionsBarCard(monthlyReport.topEmotions, fontFamily = SCoreDreamFontFamily)
                     }
                     item {
                         Spacer(Modifier.height(16.dp))
@@ -632,180 +640,6 @@ private fun DateNav(dateText: String, onPrev: () -> Unit, onNext: () -> Unit, on
     }
 }
 
-@Composable
-private fun TodaySummaryCard(emotion: String, percent: Int) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        color = SurfaceColor,
-        shape = RoundedCornerShape(23.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Image(
-                painter = painterResource(R.drawable.analysis_top_emotion_circles),
-                contentDescription = null,
-                modifier = Modifier.size(width = 88.dp, height = 63.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = buildAnnotatedString {
-                        append("오늘 가장 많이 느낀 감정은\n")
-                        withStyle(SpanStyle(color = HighlightMint, fontWeight = FontWeight.Bold)) {
-                            append(emotion)
-                        }
-                        append("이에요")
-                    },
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily),
-                    color = Color.Black
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "전체 감정 중 ${percent}%를 차지했어요",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily),
-                    color = BodyGray
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TopEmotionsCard(emotions: List<TopEmotionBar>) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        color = SurfaceColor,
-        shape = RoundedCornerShape(23.dp)
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    "주요 감정",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily, fontWeight = FontWeight.Bold),
-                    color = Color.Black
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "일기에서 추출된 핵심 감정이에요",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily),
-                    color = BodyGray
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                emotions.forEach { bar ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .width(88.dp)
-                                .height(bar.barHeight)
-                                .background(bar.color, RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.TopCenter
-                        ) {
-                            Text(
-                                "${bar.percent}%",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily, fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                modifier = Modifier.padding(top = 12.dp)
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            bar.label,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily),
-                            color = Color.Black
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoCard(
-    modifier: Modifier = Modifier,
-    iconRes: Int,
-    prefix: String,
-    highlight: String,
-    suffix: String
-) {
-    Surface(
-        modifier = modifier,
-        color = SurfaceColor,
-        shape = RoundedCornerShape(23.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(40.dp)
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                prefix,
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily),
-                color = Color.Black
-            )
-            Text(
-                text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = HighlightMint, fontWeight = FontWeight.Bold)) {
-                        append(highlight)
-                    }
-                    append(suffix)
-                },
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily),
-                color = Color.Black
-            )
-        }
-    }
-}
-
-@Composable
-private fun MonthlySummaryCard(emotion: String, percent: Int, emotionColor: Color) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        color = SurfaceColor,
-        shape = RoundedCornerShape(23.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Image(
-                painter = painterResource(R.drawable.analysis_top_emotion_circles),
-                contentDescription = null,
-                modifier = Modifier.size(width = 88.dp, height = 63.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = buildAnnotatedString {
-                        append("이번 달 가장 많이 느낀 감정은\n")
-                        withStyle(SpanStyle(color = emotionColor, fontWeight = FontWeight.Bold)) {
-                            append(emotion)
-                        }
-                        append("이에요")
-                    },
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = SCoreDreamFontFamily),
-                    color = Color.Black
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "전체 감정 중 ${percent}%를 차지했어요",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily),
-                    color = BodyGray
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun EmotionFlowCard(weeklyFlow: List<WeekPoint>) {

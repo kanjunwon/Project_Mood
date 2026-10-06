@@ -80,7 +80,10 @@ private fun DiaryEntry.isInMonth(yearMonth: YearMonth): Boolean {
 }
 
 @Composable
-fun ArchiveScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
+fun ArchiveScreen(
+    diaryListViewModel: DiaryListViewModel = viewModel(),
+    onDiaryClick: (Long) -> Unit = {}
+) {
     // 일기는 한국 시간 기준으로 월별 그룹핑되므로, 처음 보여줄 "이번 달"도 한국 시간 기준이어야 한다.
     var selectedYearMonth by remember { mutableStateOf(YearMonth.now(SEOUL_ZONE)) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -120,7 +123,7 @@ fun ArchiveScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
                     }
                 } else {
                     items(monthEntries) { entry ->
-                        ArchiveCard(entry)
+                        ArchiveCard(entry, onClick = { onDiaryClick(entry.id) })
                     }
                 }
             }
@@ -160,8 +163,11 @@ private fun ArchiveHeader(yearMonth: YearMonth, onDateClick: () -> Unit) {
 }
 
 @Composable
-private fun ArchiveCard(entry: DiaryEntry) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun ArchiveCard(entry: DiaryEntry, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
         // entry.imageUrl(SD3 생성 이미지)이 있으면 그걸, 없거나 로딩 실패하면 top_emotion 기준
         // 가장 가까운 기존 일러스트로 대체. 로딩 중에도 같은 일러스트를 보여줘서 빈 자리 방지.
         val fallback = painterResource(drawableForEmotion(entry.topEmotion))

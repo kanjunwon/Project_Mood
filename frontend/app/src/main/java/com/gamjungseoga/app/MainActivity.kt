@@ -46,6 +46,7 @@ import com.gamjungseoga.app.screens.auth.SignupSubmitState
 import com.gamjungseoga.app.screens.auth.SignupViewModel
 import com.gamjungseoga.app.screens.diary.DiaryCompleteScreen
 import com.gamjungseoga.app.screens.diary.DiaryDateScreen
+import com.gamjungseoga.app.screens.diary.DiaryDetailScreen
 import com.gamjungseoga.app.screens.diary.DiaryGenerationState
 import com.gamjungseoga.app.screens.diary.DiaryGeneratingScreen
 import com.gamjungseoga.app.screens.diary.DiaryListState
@@ -175,8 +176,28 @@ fun GamjeongseogaApp() {
                 startDestination = startDestination,
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable(Screen.Home.route) { HomeScreen() }
-                composable(Screen.Archive.route) { ArchiveScreen() }
+                composable(Screen.Home.route) {
+                    HomeScreen(
+                        onDiaryClick = { diaryId -> navController.navigate(Screen.DiaryDetail.routeFor(diaryId)) }
+                    )
+                }
+                composable(Screen.Archive.route) {
+                    ArchiveScreen(
+                        onDiaryClick = { diaryId -> navController.navigate(Screen.DiaryDetail.routeFor(diaryId)) }
+                    )
+                }
+                composable(
+                    route = Screen.DiaryDetail.route,
+                    arguments = listOf(
+                        navArgument(Screen.DiaryDetail.ARG_DIARY_ID) { type = NavType.LongType }
+                    )
+                ) { entry ->
+                    val diaryId = entry.arguments?.getLong(Screen.DiaryDetail.ARG_DIARY_ID) ?: -1L
+                    DiaryDetailScreen(
+                        diaryId = diaryId,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
                 composable(Screen.Analysis.route) { AnalysisScreen() }
                 composable(Screen.Settings.route) {
                     SettingsScreen(

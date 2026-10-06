@@ -44,6 +44,12 @@ sealed class Screen(val route: String) {
     data object DiaryGenerating : Screen("diary/generating")
     data object DiaryComplete : Screen("diary/complete")
 
+    // 아카이브/홈에서 저장된 일기 카드를 눌러 들어가는 상세보기 (일기작성 그래프 바깥의 독립 화면)
+    data object DiaryDetail : Screen("diary-detail/{diaryId}") {
+        const val ARG_DIARY_ID = "diaryId"
+        fun routeFor(diaryId: Long) = "diary-detail/$diaryId"
+    }
+
     // 이미지 커스터마이징 플로우 (설정 화면의 "이미지 커스터마이징 → 변경하기"로 진입하는 중첩 네비게이션 그래프)
     data object ProfileCustomizeGraph : Screen("profile-customize")
     data object ProfileCustomizeGlasses : Screen("profile-customize/glasses")

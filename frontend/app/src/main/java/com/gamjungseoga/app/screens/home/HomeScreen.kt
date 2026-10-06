@@ -4,6 +4,7 @@ import com.gamjungseoga.app.R
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -91,6 +92,7 @@ private data class MonthlyEmotion(
 )
 
 private data class DiaryPage(
+    val id: Long,
     val dateTop: String,
     val dateBottom: String,
     val color: Color,
@@ -148,6 +150,7 @@ private val recentPageDateFormatter = DateTimeFormatter.ofPattern("MMM", Locale.
 private fun DiaryEntry.toDiaryPage(index: Int): DiaryPage {
     val created = parseServerDateTimeInSeoul(createdAt)
     return DiaryPage(
+        id = id,
         dateTop = created?.format(recentPageDateFormatter)?.uppercase(Locale.ENGLISH) ?: "-",
         dateBottom = created?.dayOfMonth?.toString() ?: "-",
         color = recentPageColors[index % recentPageColors.size],
@@ -197,7 +200,10 @@ private fun centerScale(listState: LazyListState, index: Int): Float {
 }
 
 @Composable
-fun HomeScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
+fun HomeScreen(
+    diaryListViewModel: DiaryListViewModel = viewModel(),
+    onDiaryClick: (Long) -> Unit = {}
+) {
     val listState = diaryListViewModel.state
     val recentPages = remember(listState) {
         (listState as? DiaryListState.Loaded)?.diaries
@@ -287,7 +293,7 @@ fun HomeScreen(diaryListViewModel: DiaryListViewModel = viewModel()) {
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 itemsIndexed(recentPages) { index, page ->
-                                    DiaryPageCard(page, index, pagesListState)
+                                    DiaryPageCard(page, index, pagesListState, onClick = { onDiaryClick(page.id) })
                                 }
                             }
                         }
@@ -473,7 +479,7 @@ private fun BoxScope.GreenDotAccent() {
 }
 
 @Composable
-private fun DiaryPageCard(page: DiaryPage, index: Int, listState: LazyListState) {
+private fun DiaryPageCard(page: DiaryPage, index: Int, listState: LazyListState, onClick: () -> Unit) {
     // 실제 레이아웃 크기 자체를 바꿔서 이웃 카드가 가려지지 않고 옆으로 밀려나게 함
     val scale = centerScale(listState, index)
     val cardWidth = PAGE_CARD_BASE_WIDTH * scale
@@ -484,6 +490,7 @@ private fun DiaryPageCard(page: DiaryPage, index: Int, listState: LazyListState)
         modifier = Modifier
             .width(cardWidth)
             .height(cardHeight + PAGE_CARD_RIBBON_OVERHANG)
+            .clickable(onClick = onClick)
     ) {
         // 실제로 보이는 다이어리 페이지 박스(사진/색상). 바깥 Box 하단에 붙여서
         // 위쪽 overhang 공간은 비워두고 책갈피가 그 공간에 걸치도록 함
