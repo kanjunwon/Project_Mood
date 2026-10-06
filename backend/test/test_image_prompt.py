@@ -277,3 +277,51 @@ def test_template_has_no_duplicate_tags():
 def test_all_24_emotions_mapped():
     assert set(EMOTION_TAGS) == set(EMOTION_LIST)
     assert len(EMOTION_TAGS) == 24
+
+
+# ---------- 측정용 디버그 엔드포인트 ----------
+
+def test_debug_endpoints_not_registered_by_default():
+    from app.main import app
+    assert not any(getattr(r, "path", "").startswith("/debug") for r in app.routes)
+
+
+def test_debug_paths_return_404_when_not_enabled():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.services.auth_service import create_access_token
+
+    assert os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() != "true"
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {create_access_token(user_id=1)}"}
+    body = {"diary_text": "x", "overrides": {"mode": "template"}}
+    assert client.post("/debug/image-prompt", json=body, headers=headers).status_code == 404
+    assert client.get("/debug/last-pipeline-timings", headers=headers).status_code == 404
+
+
+def test_debug_endpoint_template_and_mock_never_load_model(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.models import llama_loader
+    from app.routers import debug
+    from app.services.auth_service import create_access_token
+
+    monkeypatch.setattr(llama_service, "MOCK_MODE", True)
+    monkeypatch.setattr(llama_loader, "get_model_and_tokenizer", lambda: pytest.fail("모델 로딩되면 안 됨"))
+    app = FastAPI()
+    app.include_router(debug.router)
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {create_access_token(user_id=1)}"}
+    body = {"diary_text": "카페에서 공부했다", "who": "혼자", "emotion": "뿌듯한", "where": "카페", "when": "오후 2시"}
+
+    r = client.post("/debug/image-prompt", json={**body, "overrides": {"mode": "template"}}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["positive"].startswith("1girl, solo")
+
+    r = client.post("/debug/image-prompt", json={**body, "overrides": {"mode": "llm"}}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["fallback_used"] is True
+
+    r = client.post("/debug/image-prompt", json={**body, "overrides": {"nope": 1}}, headers=headers)
+    assert r.status_code == 400
+    assert client.post("/debug/image-prompt", json=body).status_code in (401, 403)

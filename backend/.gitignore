@@ -1,1 +1,4 @@
 kobert_model/
+
+# 측정 스크립트 결과 (서버에서 가져올 땐 git add -f bench_results)
+bench_results/
