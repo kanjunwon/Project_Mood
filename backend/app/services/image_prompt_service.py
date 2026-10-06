@@ -8,6 +8,7 @@ app/services/image_prompt_service.py
 
 [.env 설정] 변환 단계가 너무 오래 걸려서(A6000 기준 93.5초) 코드 수정 없이 조합을 바꿔가며
 측정할 수 있게 환경변수로 뺐음. 아무것도 안 주면 기존 동작과 완전히 같음.
+  IMAGE_PROMPT_MODE=llm|template       (기본 llm) template이면 LLM 호출 없이 사전 매핑으로 변환
   IMAGE_PROMPT_MAX_NEW_TOKENS=200      (기본 200)
   IMAGE_PROMPT_DO_SAMPLE=true          (기본 true) false면 greedy, temperature/top_p 무시
   IMAGE_PROMPT_TEMPERATURE=0.3         (기본 0.3)
@@ -131,6 +132,7 @@ JSON_PATTERN_POSITIVE_ONLY = re.compile(r'\{.*"positive"\s*:.*\}', re.DOTALL)
 JSON_CLOSE_STOP_STRINGS = ['"}', '"\n}', '" }']
 
 _DEFAULT_CONFIG = {
+    "mode": "llm",
     "max_new_tokens": 200,
     "do_sample": True,
     "temperature": 0.3,
@@ -141,6 +143,7 @@ _DEFAULT_CONFIG = {
 }
 
 _ENV_KEYS = {
+    "mode": ("IMAGE_PROMPT_MODE", str),
     "max_new_tokens": ("IMAGE_PROMPT_MAX_NEW_TOKENS", int),
     "do_sample": ("IMAGE_PROMPT_DO_SAMPLE", "bool"),
     "temperature": ("IMAGE_PROMPT_TEMPERATURE", float),
@@ -174,6 +177,9 @@ def get_config(overrides: dict | None = None) -> dict:
             raise ValueError(f"알 수 없는 이미지 프롬프트 설정: {key}")
         cfg[key] = _cast(value, _ENV_KEYS[key][1])
 
+    cfg["mode"] = str(cfg["mode"]).strip().lower()
+    if cfg["mode"] not in ("llm", "template"):
+        raise ValueError(f"IMAGE_PROMPT_MODE는 llm 또는 template만 가능: {cfg['mode']}")
     cfg["max_attempts"] = max(1, cfg["max_attempts"])
     return cfg
 
@@ -223,11 +229,12 @@ def _fallback_prompt(top_emotion: str) -> dict:
 
 
 def translate_to_image_prompt(diary_text: str, who, emotion: str, where: str, when: str,
-                              config: dict | None = None,
+                              gender: str | None = None, config: dict | None = None,
                               report: dict | None = None) -> dict:
     """
     일기 텍스트 -> {"positive": "...", "negative": "..."} 영어 danbooru 태그.
-    기존 일기 생성용 LLaMA를 재사용 (별도 모델 로딩 없음).
+    llm 모드: 기존 일기 생성용 LLaMA를 재사용 (별도 모델 로딩 없음).
+    template 모드: LLM 호출 없이 사전 매핑 (image_prompt_template.py 참고). gender는 이 모드에서만 씀.
     config: get_config()에 넘길 덮어쓰기 값 (측정용 디버그 엔드포인트에서 사용)
     report: dict를 넘기면 호출별 측정값을 채워줌 (리턴값은 그대로)
     """
@@ -236,6 +243,17 @@ def translate_to_image_prompt(diary_text: str, who, emotion: str, where: str, wh
     if report is not None:
         report["config"] = cfg
         report["calls"] = []
+
+    if cfg["mode"] == "template":
+        from app.services.image_prompt_template import build_template_prompt
+        result = build_template_prompt(diary_text=diary_text, who=who, emotion=emotion,
+                                       where=where, when=when, gender=gender)
+        elapsed = time.time() - start
+        print(f"  [이미지 프롬프트 변환] template 모드, LLM 호출 0회, 소요시간: {elapsed * 1000:.1f}ms")
+        print(f"  [이미지 프롬프트 변환] positive: {result['positive']}")
+        if report is not None:
+            report.update(total_sec=round(elapsed, 4), fallback_used=False, **result)
+        return result
 
     from app.services.llama_service import _generate_once, MOCK_MODE
 

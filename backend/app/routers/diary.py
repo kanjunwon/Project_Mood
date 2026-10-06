@@ -31,6 +31,7 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
     bangs = profile.get("bangs", True)
     hair_length = profile.get("hair_length", "medium")
     hair_color = profile.get("hair_color", "black")
+    gender = profile.get("gender")  # IMAGE_PROMPT_MODE=template일 때만 쓰임
     timings["profile_sec"] = round(time.time() - t_start, 2)
 
     t = time.time()
@@ -85,6 +86,7 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
                 bangs=bangs,
                 hair_length=hair_length,
                 hair_color=hair_color,
+                gender=gender,
                 timings=timings,
             )
         except Exception as e:

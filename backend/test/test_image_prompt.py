@@ -5,8 +5,10 @@ os.environ["MOCK_MODE"] = "true"  # 테스트는 항상 mock 모드로 (GPU 필�
 
 import pytest
 
+from app.emotion_list import EMOTION_LIST
 from app.services import image_prompt_service as ips
 from app.services import llama_service
+from app.services.image_prompt_template import EMOTION_TAGS, build_template_prompt
 
 # 분리 전 원본 SYSTEM_PROMPT(커밋 95bdc05)의 sha256. 예시 개수/negative 옵션 기본값에서
 # 프롬프트가 글자 하나라도 바뀌면 기존 동작이 바뀐 것이므로 실패해야 함.
@@ -51,7 +53,7 @@ def test_default_system_prompt_is_identical_to_original():
 
 def test_default_config_matches_previous_hardcoded_values():
     assert ips.get_config() == {
-        "max_new_tokens": 200, "do_sample": True, "temperature": 0.3,
+        "mode": "llm", "max_new_tokens": 200, "do_sample": True, "temperature": 0.3,
         "num_examples": 5, "stop_on_json_close": False, "fixed_negative": False, "max_attempts": 2,
     }
 
@@ -118,9 +120,12 @@ def test_overrides_take_precedence_over_env(monkeypatch):
     assert ips.get_config({"max_new_tokens": 80})["max_new_tokens"] == 80
 
 
-def test_unknown_key_raises():
+def test_invalid_mode_and_unknown_key_raise(monkeypatch):
     with pytest.raises(ValueError):
         ips.get_config({"nope": 1})
+    monkeypatch.setenv("IMAGE_PROMPT_MODE", "gpt")
+    with pytest.raises(ValueError):
+        ips.get_config()
 
 
 def test_example_reduction_keeps_priority_order():
@@ -153,7 +158,122 @@ def test_fixed_negative_equals_system_prompt_negative_exactly(fake_llm):
     outputs.append('{"positive": "1girl, solo, gamjeong style"}')
     result = ips.translate_to_image_prompt("일기", "혼자", "편안한", "", "", config={"fixed_negative": True})
     assert result["negative"] == negatives[0]
+    # template 모드도 같은 negative를 씀
+    assert build_template_prompt("일기", "혼자", "편안한", "", "")["negative"] == negatives[0]
     # v3 인원수 초과 방지 항목 포함 확인
     for item in ("extra people", "extra person", "additional people", "crowd", "too many people",
                  "duplicate character", "clone", "multiple views", "split screen"):
         assert item in result["negative"]
+
+
+# ---------- template 모드 ----------
+
+def test_template_mode_never_calls_llm(monkeypatch):
+    monkeypatch.setattr(llama_service, "MOCK_MODE", False)
+    monkeypatch.setattr(llama_service, "_generate_once", lambda *a, **k: pytest.fail("LLM 호출되면 안 됨"))
+    monkeypatch.setenv("IMAGE_PROMPT_MODE", "template")
+    result = ips.translate_to_image_prompt("카페에서 공부했다", "혼자", "뿌듯한", "카페", "오후 2시")
+    assert result["positive"].startswith("1girl, solo")
+
+
+def _check_common_rules(result):
+    pos = result["positive"]
+    assert pos.endswith("gamjeong style")
+    assert result["negative"] == ips.FALLBACK_NEGATIVE
+    assert "extra people" in result["negative"] and "too many people" in result["negative"]
+    for phrase in FORBIDDEN_COUNT_PHRASES:
+        assert phrase not in pos
+    first = pos.split(", ")[0]
+    assert first[0].isdigit() and ("girl" in first or "boy" in first)  # 인원 태그가 맨 앞
+
+
+def test_template_solo_female_default():
+    r = build_template_prompt("퇴근하고 집에 왔다.", "혼자", "피곤한", "집", "10월 4일 토요일 오후 9시")
+    _check_common_rules(r)
+    assert r["positive"].startswith("1girl, solo, young adult woman")
+    assert "tired expression" in r["positive"] and "dim lighting" in r["positive"]
+    assert "living room" in r["positive"] and "night" in r["positive"]
+
+
+def test_template_solo_male_from_gender():
+    r = build_template_prompt("산책했다.", ["혼자"], "상쾌한", "동네", "오전 8시", gender="남성")
+    _check_common_rules(r)
+    assert r["positive"].startswith("1boy, solo, young adult man")
+    assert "morning" in r["positive"]
+    assert "mountain" not in r["positive"]  # "산책"의 "산"이 장소로 잡히면 안 됨
+    assert "reading book" not in r["positive"]  # "산책"의 "책"이 행동으로 잡히면 안 됨
+
+
+def test_template_couple_exact_tags():
+    r = build_template_prompt("데이트했다.", "연인", "설레는", "카페", "")
+    _check_common_rules(r)
+    assert r["positive"].startswith("1girl, young adult woman, 1boy, young adult man, couple")
+
+
+def test_template_family_includes_parents_and_dedupes():
+    r = build_template_prompt("본가에 갔다.", "가족,엄마,아빠", "편안한", "본가", "", gender="남성")
+    _check_common_rules(r)
+    pos = r["positive"]
+    assert pos.startswith("1girl, 2boys")  # 본인(남) + 엄마 + 아빠 = 3명, 엄마/아빠 중복 없음
+    assert "mature female, mother" in pos and "mature male, father" in pos
+    assert "young adult man" in pos
+    assert pos.count("mother") == 1
+
+
+def test_template_caps_at_six_people():
+    who = "가족,할머니,할아버지,친구,여성친구,남성친구,연인"
+    r = build_template_prompt("다 같이 모였다.", who, "행복한", "식당", "")
+    _check_common_rules(r)
+    counts = r["positive"].split(", gamjeong")[0]
+    girls = boys = 0
+    for tag in counts.split(", "):
+        if tag[:1].isdigit():
+            n = int(tag[0])
+            if "girl" in tag:
+                girls = n
+            elif "boy" in tag:
+                boys = n
+    assert girls + boys == 6
+    assert "flat color, cel shading, line art, illustration" in r["positive"]  # 4명 이상
+
+
+def test_template_crowded_place_limits_foreground():
+    r = build_template_prompt("친구들이랑 놀이공원 갔다.", "친구,여성친구,남성친구,가족", "신나는", "놀이공원", "")
+    _check_common_rules(r)
+    pos = r["positive"]
+    n_people = sum(int(t[0]) for t in pos.split(", ") if t[:1].isdigit() and ("girl" in t or "boy" in t))
+    assert n_people <= 3
+    assert "blurred crowd silhouettes in background" in pos and "bokeh" in pos
+    assert "crowd," not in pos.replace("blurred crowd silhouettes", "")
+
+
+def test_template_friends_group_hint_from_diary():
+    one = build_template_prompt("걔랑 밥 먹었다.", "친구", "즐거운", "", "")
+    many = build_template_prompt("친구들이랑 다 같이 밥 먹었다.", "친구", "즐거운", "", "")
+    assert one["positive"].startswith("2girls")
+    assert many["positive"].startswith("2girls, 1boy")
+
+
+def test_template_pets_do_not_count_as_people():
+    r = build_template_prompt("고양이가 반겨줬다.", "반려동물,고양이", "편안한", "자취방", "")
+    _check_common_rules(r)
+    assert r["positive"].startswith("1girl, solo")
+    assert "cat" in r["positive"]
+
+
+def test_template_unknown_inputs_are_omitted():
+    r = build_template_prompt("그냥 그랬다.", "외계인", "알수없는감정", "어딘가", "언젠가")
+    _check_common_rules(r)
+    assert r["positive"] == "1girl, solo, young adult woman, calm expression, soft lighting, gamjeong style"
+
+
+def test_template_has_no_duplicate_tags():
+    r = build_template_prompt("생일이라 케이크에 초 꽂고 노래 불렀다.", "친구,여성친구,남성친구", "신나는", "친구네 집", "")
+    tags = r["positive"].split(", ")
+    assert len(tags) == len(set(tags))
+    assert "birthday cake" in tags
+
+
+def test_all_24_emotions_mapped():
+    assert set(EMOTION_TAGS) == set(EMOTION_LIST)
+    assert len(EMOTION_TAGS) == 24

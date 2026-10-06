@@ -126,11 +126,13 @@ def generate_diary_image(
     bangs: bool = True,
     hair_length: str = "medium",
     hair_color: str = "black",
+    gender: str | None = None,
     timings: dict | None = None,
 ) -> str:
     """
     일기 텍스트 + 대표 감정 + Who/Where/When + 아바타 속성(안경/앞머리/머리길이/머리색) -> 그림일기 이미지 URL.
     glasses: "horn_rimmed" | "round" | "none"
+    gender: 계정 성별. IMAGE_PROMPT_MODE=template일 때만 쓰임 (llm 모드는 기존과 동일하게 안 씀)
     timings: dict를 넘기면 단계별 소요시간(초)을 채워줌 (측정용)
     """
     if timings is None:
@@ -138,7 +140,7 @@ def generate_diary_image(
 
     t0 = time.time()
     prompt_result = translate_to_image_prompt(
-        diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when
+        diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when, gender=gender
     )
     positive = f"{prompt_result['positive']}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
     negative = prompt_result.get("negative") or FALLBACK_NEGATIVE_PROMPT
