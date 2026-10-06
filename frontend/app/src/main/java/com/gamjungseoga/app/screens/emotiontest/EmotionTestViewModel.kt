@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gamjungseoga.app.network.AppScope
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.PersonalTestSubmitRequest
 import com.gamjungseoga.app.network.describeHttpException
@@ -33,8 +32,9 @@ class EmotionTestViewModel : ViewModel() {
         addAll(List(emotionTestQuestions.size) { null })
     }
 
-    // 강제 진입(회원가입/로그인 직후) 흐름에서만 쓰는 제출 상태. 설정의 "다시하기"는 지금처럼
-    // fire-and-forget이라 이 상태를 보지 않는다.
+    // 강제 진입(회원가입/로그인 직후)과 설정 "다시하기" 둘 다 이 상태를 보고 전송 결과를 기다린다.
+    // 두 흐름의 차이는 성공 후 어디로 이동하느냐뿐이라, 그 부분만 호출하는 쪽(MainActivity)이
+    // onSuccess 콜백으로 다르게 넘긴다.
     var submitState by mutableStateOf<EmotionTestSubmitState>(EmotionTestSubmitState.Idle)
         private set
 
@@ -58,23 +58,10 @@ class EmotionTestViewModel : ViewModel() {
         return PersonalTestSubmitRequest(answers = filled.toMap())
     }
 
-    // 설정 화면 "다시하기"로 들어온 경우: 화면은 응답을 기다리지 않고 바로 닫히므로(popBackStack),
-    // 화면 생명주기와 무관한 AppScope로 보내서 ViewModel이 소멸돼도 요청이 끝까지 전송되게 함.
-    fun submitIfComplete() {
-        val request = buildRequest() ?: return
-        AppScope.io.launch {
-            try {
-                ApiClient.personalTestApi.submitPersonalTest(request)
-            } catch (_: Exception) {
-                // 화면이 이미 닫힌 뒤라 사용자에게 보여줄 곳이 없음 - 다음 접속 때 재시도 UX는 TODO
-            }
-        }
-    }
-
-    // 강제 진입 흐름: 전송에 실패하면 사용자가 검사를 또 해야 하는 상황이 생기므로, 결과를
-    // 기다렸다가 성공했을 때만 onSuccess를 호출한다. 실패하면 에러 상태로 남겨서 화면이
-    // 재시도 버튼을 보여줄 수 있게 한다.
-    fun submitForced(onSuccess: () -> Unit) {
+    // 마지막 문항에 답했을 때 호출: 전송 결과를 기다렸다가 성공했을 때만 onSuccess를 호출한다.
+    // 실패하면 에러 상태로 남겨서 화면이 재시도 버튼을 보여줄 수 있게 하고, 전송 중에는
+    // submitState가 Submitting이라 다시 호출해도 중복 전송되지 않는다.
+    fun submit(onSuccess: () -> Unit) {
         val request = buildRequest() ?: return
         if (submitState is EmotionTestSubmitState.Submitting) return
         submitState = EmotionTestSubmitState.Submitting

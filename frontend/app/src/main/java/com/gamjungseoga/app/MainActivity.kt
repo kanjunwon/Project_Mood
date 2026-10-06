@@ -291,11 +291,17 @@ fun GamjeongseogaApp() {
                     val emotionTestViewModel: EmotionTestViewModel = viewModel()
                     val submitState = emotionTestViewModel.submitState
 
-                    // 강제 진입 흐름에서 검사를 마쳤을 때: 홈으로 이동하고 백스택을 비운다.
-                    val onForcedSuccess: () -> Unit = {
-                        navController.navigate(Screen.Home.route) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                            launchSingleTop = true
+                    // 강제 진입과 설정 "다시하기"는 전송 로직이 완전히 같고, 성공했을 때 어디로
+                    // 이동하느냐만 다르다: 강제 진입은 홈으로 백스택을 비우고, 설정에서 들어온
+                    // 경우는 그냥 설정 화면으로 돌아간다(popBackStack).
+                    val onSubmitSuccess: () -> Unit = {
+                        if (forced) {
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            navController.popBackStack()
                         }
                     }
 
@@ -307,15 +313,9 @@ fun GamjeongseogaApp() {
                         onAnswerSelected = { value ->
                             emotionTestViewModel.selectAnswer(value)
                             if (emotionTestViewModel.currentIndex == emotionTestQuestions.lastIndex) {
-                                if (forced) {
-                                    // 강제 진입: 전송 결과를 기다렸다가 성공했을 때만 이동 (실패하면
-                                    // 에러 + 재시도 버튼을 화면이 보여줌).
-                                    emotionTestViewModel.submitForced(onSuccess = onForcedSuccess)
-                                } else {
-                                    // 설정 "다시하기": 기존처럼 응답을 기다리지 않고 바로 닫음.
-                                    emotionTestViewModel.submitIfComplete()
-                                    navController.popBackStack()
-                                }
+                                // 전송 결과를 기다렸다가 성공했을 때만 이동한다 (실패하면 에러 +
+                                // 재시도 버튼을 화면이 보여줌 - 강제/설정 진입 모두 동일).
+                                emotionTestViewModel.submit(onSuccess = onSubmitSuccess)
                             } else {
                                 emotionTestViewModel.goNext()
                             }
@@ -325,13 +325,9 @@ fun GamjeongseogaApp() {
                         onPrev = emotionTestViewModel::goPrev,
                         onNext = emotionTestViewModel::goNext,
                         blockSystemBack = forced,
-                        isSubmitting = forced && submitState is EmotionTestSubmitState.Submitting,
-                        submitError = if (forced) (submitState as? EmotionTestSubmitState.Error)?.message else null,
-                        onRetrySubmit = if (forced) {
-                            { emotionTestViewModel.submitForced(onSuccess = onForcedSuccess) }
-                        } else {
-                            null
-                        }
+                        isSubmitting = submitState is EmotionTestSubmitState.Submitting,
+                        submitError = (submitState as? EmotionTestSubmitState.Error)?.message,
+                        onRetrySubmit = { emotionTestViewModel.submit(onSuccess = onSubmitSuccess) }
                     )
                 }
 
