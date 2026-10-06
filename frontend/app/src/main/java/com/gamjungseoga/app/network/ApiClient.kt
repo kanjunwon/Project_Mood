@@ -59,15 +59,15 @@ object ApiClient {
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
-        // OkHttp 기본 타임아웃(10초)은 /generate-diary가 KoBERT 감정분석 + SD3 이미지 생성을
-        // 끝낼 때까지 기다리기엔 너무 짧아서 개발 중 요청이 SocketTimeoutException으로 끊긴다.
-        // /generate-diary 한 요청 안에서 LLaMA 일기 생성 -> KoBERT 감정분석 -> SD3 이미지 생성이
-        // 순차 실행되어 2분을 넘기는 경우가 흔해서, readTimeout 120초로는 서버가 아직 응답 중인데
-        // 클라이언트가 먼저 끊어버리는 문제가 있었다. 여유를 두고 늘림.
+        // OkHttp 기본 타임아웃(10초)은 /generate-diary가 LLaMA 일기 생성 -> KoBERT 감정분석 ->
+        // SD3 이미지 생성을 순차 실행하는 동안 기다리기엔 너무 짧아서 늘려둔다. 백엔드가 이미지
+        // 프롬프트 변환 단계를 최적화해서 예전(120초를 넘겨 타임아웃 나던 수준, 그래서 한동안
+        // readTimeout 240초/callTimeout 300초로 여유를 뒀었음)보다 훨씬 빨라졌고, 대신 앞단의
+        // Cloudflare 프록시가 대략 100초에서 연결을 끊어버리므로 그보다 긴 타임아웃은 의미가 없다.
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(240, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(300, TimeUnit.SECONDS)
+        .callTimeout(150, TimeUnit.SECONDS)
         .build()
 
     private val retrofit = Retrofit.Builder()

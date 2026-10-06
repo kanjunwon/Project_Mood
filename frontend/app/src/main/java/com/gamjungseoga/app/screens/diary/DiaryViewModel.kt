@@ -1,5 +1,6 @@
 package com.gamjungseoga.app.screens.diary
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,6 +21,11 @@ import java.util.Locale
 import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
+
+// POST /generate-diary 실제 소요 시간을 재는 용도 (개발 중에만 확인). DiaryGeneratingScreen의
+// 진행바/문구 타이밍(PROGRESS_RAMP_SECONDS 등)을 실제 백엔드 응답 시간에 맞추기 위해 이 로그로
+// 측정한 뒤 그 값을 기준으로 조정한다.
+private const val DIARY_GEN_TIMING_TAG = "DiaryGenTiming"
 
 data class DiaryDraft(
     val date: LocalDate = LocalDate.now(),
@@ -94,7 +100,10 @@ class DiaryViewModel : ViewModel() {
                     where = current.where.trim()
                 )
 
+                val startMillis = System.currentTimeMillis()
                 val response = ApiClient.diaryApi.generateDiary(request)
+                val elapsedMillis = System.currentTimeMillis() - startMillis
+                Log.d(DIARY_GEN_TIMING_TAG, "POST /generate-diary 응답 수신: ${elapsedMillis}ms (${elapsedMillis / 1000.0}s)")
                 generationState = DiaryGenerationState.Success(response)
             } catch (e: Exception) {
                 generationState = DiaryGenerationState.Error(describeError(e))
