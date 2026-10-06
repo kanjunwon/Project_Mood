@@ -37,6 +37,20 @@ COMFYUI_URL=
 - `JWT_SECRET`: 로그인 토큰 서명용 랜덤 문자열
 - `COMFYUI_URL`: ComfyUI 서버 주소 (예: `http://127.0.0.1:8188`, FastAPI랑 ComfyUI가 같은 머신이면 localhost로 충분)
 
+**이미지 프롬프트 변환 설정 (선택, 안 넣으면 기존 동작 그대로)** — 상세는 `app/services/image_prompt_service.py` 맨 위 주석
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `IMAGE_PROMPT_MODE` | `llm` | `template`이면 LLM 호출 없이 사전 매핑 (`image_prompt_template.py`, 반영/누락 정보는 파일 주석 참고) |
+| `IMAGE_PROMPT_MAX_NEW_TOKENS` | `200` | |
+| `IMAGE_PROMPT_DO_SAMPLE` | `true` | `false`면 greedy |
+| `IMAGE_PROMPT_TEMPERATURE` | `0.3` | |
+| `IMAGE_PROMPT_NUM_EXAMPLES` | `5` | 시스템 프롬프트 예시 개수 (1~5) |
+| `IMAGE_PROMPT_STOP_ON_JSON_CLOSE` | `false` | JSON이 닫히면 생성 중단 |
+| `IMAGE_PROMPT_FIXED_NEGATIVE` | `false` | LLM은 positive만 생성, negative는 고정값 |
+| `IMAGE_PROMPT_MAX_ATTEMPTS` | `2` | JSON 파싱 실패 시 총 시도 횟수 |
+| `ENABLE_DEBUG_ENDPOINTS` | `false` | 측정할 때만 `true` (`/debug/*` 등록) |
+
 `.env` 파일은 PowerShell heredoc(`@'...'@ | Out-File -Encoding utf8`)이나 `cat > file << 'EOF'` 방식으로 만들 때, 종료 마커가 제대로 안 닫히면 스크립트 줄이 그대로 섞여 들어가는 경우가 있었음 — 만든 후 `cat .env`로 내용 한 번 확인하는 습관 추천.
 
 ## KoBERT 모델 파일 준비 (git에는 코드만 있고, 가중치는 별도)
@@ -68,6 +82,36 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 **`--reload` 옵션은 절대 쓰지 말 것.** 개발 중 재시도 로직이 여러 번 도는 상황에서 서버가 불안정해지는 원인으로 확인됨 (모델이 이미 GPU에 로딩된 상태에서 파일 변경 감지로 재시작되면서 응답이 끊기는 문제로 추정). 로컬 `MOCK_MODE=true` 개발 중에만 `--reload` 써도 무방, `MOCK_MODE=false`(실 모델) 환경에서는 절대 금지.
 
 `http://127.0.0.1:8000/docs` 에서 API 테스트 가능 (Swagger UI). 로그인 필요한 API는 우측 상단 **Authorize** 버튼으로 토큰(`Bearer ` 없이 값만) 등록하면 이후 요청에 자동 적용됨.
+
+## 이미지 프롬프트 변환 측정 (GPU 서버, 20~30분 안에 끝내기)
+
+배경: A6000 기준 변환 단계 93.5초 / 전체 108.2초라 Cloudflare 100초 제한(524)에 걸림. 서버비 시간당 약 $0.56.
+
+⚠️ 서버의 파이썬 환경은 `backend/venv`(`--system-site-packages`로 만든 venv)임. **터미널을 열 때마다 `source venv/bin/activate`를 맨 먼저** 하고,
+`pip install`도 반드시 venv가 켜진 상태에서만 할 것 (시스템 환경에 깔다가 패키지 충돌 난 적 있음). 프롬프트 앞에 `(venv)`가 보이는지 확인.
+
+```bash
+# 0. Pod Start, 웹 터미널 2개
+# 1. (터미널 1)
+cd /workspace/<레포>/backend
+source venv/bin/activate                         # 반드시 먼저. 이후 pip/python은 전부 venv 것
+git pull
+grep -v "^torch" requirements.txt > requirements_nogpu.txt && pip install -r requirements_nogpu.txt   # venv 안에서만. 컨테이너 재시작하면 패키지 초기화됨
+echo "ENABLE_DEBUG_ENDPOINTS=true" >> .env       # 측정 끝나면 지우기
+PYTHONUNBUFFERED=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee uvicorn_log.txt   # ComfyUI는 먼저 떠 있어야 함
+# 2. (터미널 2) 워밍업은 스크립트가 알아서 하고 측정에서 뺌
+cd /workspace/<레포>/backend
+source venv/bin/activate                         # 터미널 2에서도 반드시 먼저
+BENCH_USER_ID=<테스트 계정 id> python scripts/measure_image_prompt.py
+# 3. 결과 확인/보관 후 바로 Stop
+cat bench_results/image_prompt_*.md
+git add -f bench_results uvicorn_log.txt && git commit -m "이미지 프롬프트 변환 측정 결과" && git push
+```
+
+- 스크립트 출력 맨 마지막과 `.md` 맨 위에 **해석용 요약표**가 나옴: ① 현재 설정의 케이스별 변환 시간/호출 수/재시도/입력·생성 토큰/tok/s, ② 조합별 목표(모든 케이스 40초 이하 + fallback 없음) O/X, ③ template 시간과 llm positive 대비 빠진 태그, ④ 가장 빠른 llm 조합 3개와 그중 품질이 현재와 비슷한 것(인원 태그 일치 + 태그 겹침 0.5 이상, 기계적 기준이라 positive는 눈으로도 확인).
+- 결과는 단계마다 `bench_results/`에 저장돼서 중간에 끊겨도 남음. `--budget-min`(기본 18분)을 넘기면 남은 조합은 건너뜀.
+- `BENCH_USER_ID`를 주면 마지막에 `/generate-diary` 전체를 2번 돌려 단계별 시간을 기록함 (그 계정에 일기 2개가 실제로 저장됨). 빼면 이 단계만 생략.
+- 일반 요청에서도 서버 로그에 `[TIMING]` 줄(단계별 시간)과 `[이미지 프롬프트 변환]` 줄(호출별 토큰 수/시간/raw 출력)이 찍힘.
 
 ## 폴더 구조
 
