@@ -1,4 +1,5 @@
 import os
+import time
 from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies import get_current_user_id
 from app.schemas.diary import DiaryRequest, DiaryResponse
@@ -13,9 +14,16 @@ router = APIRouter()
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
+# 가장 최근 /generate-diary 요청의 단계별 소요시간(초). 서버 로그에도 찍고,
+# 측정 스크립트는 /debug/last-pipeline-timings로 읽어감 (ENABLE_DEBUG_ENDPOINTS=true일 때만)
+LAST_PIPELINE_TIMINGS: dict = {}
+
 
 @router.post("/generate-diary", response_model=DiaryResponse)
 def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_user_id)):
+    timings = {}
+    t_start = time.time()
+
     # user_id는 body가 아니라 로그인 토큰에서만 가져옴. 이 값으로 프로필(아바타 설정)도
     # 같이 조회해서 이미지 생성에 반영.
     profile = get_user_by_id(user_id) or {}
@@ -23,7 +31,9 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
     bangs = profile.get("bangs", True)
     hair_length = profile.get("hair_length", "medium")
     hair_color = profile.get("hair_color", "black")
+    timings["profile_sec"] = round(time.time() - t_start, 2)
 
+    t = time.time()
     try:
         diary_text, failed = generate_diary_text(
             what=request.what,
@@ -31,17 +41,21 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
             who=request.who,
             when=request.when,
             where=request.where,
+            timings=timings,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 생성 중 오류 발생: {str(e)}")
+    timings["diary_total_sec"] = round(time.time() - t, 2)
 
     who_str = ", ".join(request.who) if isinstance(request.who, list) else request.who
 
+    t = time.time()
     try:
         emotion_result = analyze_emotion(diary_text)
     except Exception as e:
         print(f"감정 분석 실패: {e}")
         emotion_result = {"top_emotion": None, "scores": None, "sentiment_score": None}
+    timings["kobert_sec"] = round(time.time() - t, 2)
 
     # 퍼스널 검사 기반 가중치 적용 (종현 설계, 2026-09-24 확정: 정서가x연속값 각성도, alpha=0.4)
     # 검사를 한 번도 안 했거나 KoBERT 자체가 실패한 경우엔 원본(KoBERT raw) 그대로 사용.
@@ -57,6 +71,7 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
 
     # SD3 이미지 생성 - 실패해도 일기 자체는 정상 응답되게 try/except로 감쌈
     image_url = None
+    t = time.time()
     if not MOCK_MODE:
         try:
             from app.services.sd3_service import generate_diary_image
@@ -70,10 +85,13 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
                 bangs=bangs,
                 hair_length=hair_length,
                 hair_color=hair_color,
+                timings=timings,
             )
         except Exception as e:
             print(f"이미지 생성 실패 (일기 생성은 성공): {e}")
+    timings["image_total_sec"] = round(time.time() - t, 2)
 
+    t = time.time()
     try:
         save_diary({
             "user_id": str(user_id),
@@ -91,6 +109,22 @@ def generate_diary(request: DiaryRequest, user_id: int = Depends(get_current_use
         })
     except Exception as e:
         print(f"DB 저장 실패 (일기 생성은 성공): {e}")
+    timings["db_save_sec"] = round(time.time() - t, 2)
+    timings["total_sec"] = round(time.time() - t_start, 2)
+
+    print(
+        "  [TIMING] /generate-diary "
+        f"전체 {timings['total_sec']}초 = "
+        f"일기생성 {timings['diary_total_sec']}초"
+        f"(LLM {timings.get('diary_llm_sec')}초, 검증 {timings.get('diary_validate_sec')}초, {timings.get('diary_attempts')}회 시도) + "
+        f"KoBERT {timings['kobert_sec']}초 + "
+        f"이미지 {timings['image_total_sec']}초"
+        f"(프롬프트 변환 {timings.get('image_prompt_sec')}초, ComfyUI {timings.get('comfyui_sec')}초, "
+        f"업로드 {timings.get('upload_sec')}초) + "
+        f"DB저장 {timings['db_save_sec']}초 + 프로필조회 {timings['profile_sec']}초"
+    )
+    LAST_PIPELINE_TIMINGS.clear()
+    LAST_PIPELINE_TIMINGS.update(timings)
 
     return DiaryResponse(
         status="success",

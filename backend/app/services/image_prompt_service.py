@@ -95,15 +95,25 @@ def _build_translation_prompt(diary_text: str, who, emotion: str, where: str, wh
     )
 
 
-def _extract_json(text: str) -> dict | None:
+def _parse_output(text: str) -> tuple[dict | None, str]:
+    """(파싱 결과, 실패 사유). 성공하면 사유는 빈 문자열."""
     # 모델이 JSON 앞뒤로 잡담을 붙이는 경우가 있어서, 정규식으로 JSON 블록만 뽑아냄
     match = JSON_PATTERN.search(text)
     if not match:
-        return None
+        return None, "JSON 블록 없음 (정규식 불일치, 생성이 중간에 잘렸을 수 있음)"
     try:
-        return json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
+        result = json.loads(match.group(0))
+    except json.JSONDecodeError as e:
+        return None, f"JSONDecodeError: {e}"
+    if not isinstance(result, dict) or "positive" not in result:
+        return None, "positive 키 없음"
+    if "negative" not in result:
+        return None, "negative 키 없음"
+    return result, ""
+
+
+def _extract_json(text: str) -> dict | None:
+    return _parse_output(text)[0]
 
 
 def _fallback_prompt(top_emotion: str) -> dict:
@@ -114,33 +124,72 @@ def _fallback_prompt(top_emotion: str) -> dict:
     }
 
 
-def translate_to_image_prompt(diary_text: str, who, emotion: str, where: str, when: str) -> dict:
+def translate_to_image_prompt(diary_text: str, who, emotion: str, where: str, when: str,
+                              report: dict | None = None) -> dict:
     """
     일기 텍스트 -> {"positive": "...", "negative": "..."} 영어 danbooru 태그.
     기존 일기 생성용 LLaMA를 재사용 (별도 모델 로딩 없음).
+    report: dict를 넘기면 호출별 측정값을 채워줌 (리턴값은 그대로)
     """
     from app.services.llama_service import _generate_once, MOCK_MODE
 
+    if report is not None:
+        report["calls"] = []
+
     if MOCK_MODE:
-        return _fallback_prompt(emotion)
+        result = _fallback_prompt(emotion)
+        if report is not None:
+            report.update(total_sec=0.0, fallback_used=True, **result)
+        return result
 
     start = time.time()
     prompt_str = _build_translation_prompt(diary_text, who, emotion, where, when)
 
     result = None
-    for attempt in range(1, 3):  # 최대 2번만 재시도 (JSON 파싱 실패 대비, 너무 오래 끌지 않게)
-        raw = _generate_once(prompt_str, temperature=0.3, max_new_tokens=200)
-        result = _extract_json(raw)
-        if result and "positive" in result and "negative" in result:
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):  # 최대 2번만 재시도 (JSON 파싱 실패 대비, 너무 오래 끌지 않게)
+        stats = {}
+        raw = _generate_once(prompt_str, temperature=0.3, max_new_tokens=200, stats=stats)
+        result, fail_reason = _parse_output(raw)
+
+        print(
+            f"  [이미지 프롬프트 변환] 호출 {attempt}/{max_attempts} "
+            f"({'재시도' if attempt > 1 else '첫 시도'}): "
+            f"입력 {stats.get('input_tokens')}토큰, 생성 {stats.get('output_tokens')}토큰"
+            f"{' (max_new_tokens 상한 도달)' if stats.get('hit_max_new_tokens') else ''}, "
+            f"{stats.get('elapsed_sec')}초, {stats.get('tokens_per_sec')}tok/s, "
+            f"파싱 {'성공' if result else '실패 - ' + fail_reason}"
+        )
+        print("  ----- raw 출력 전문 (Human: 자르기 전) -----")
+        print(stats.get("raw_full", raw))
+        print("  ----- raw 끝 -----")
+
+        if report is not None:
+            report["calls"].append({
+                "attempt": attempt,
+                "is_retry": attempt > 1,
+                "parse_ok": result is not None,
+                "fail_reason": fail_reason,
+                "raw": raw,
+                **stats,
+            })
+
+        if result:
             break
-        print(f"  [이미지 프롬프트 변환] {attempt}번째 시도 JSON 파싱 실패: {raw[:80]}...")
         result = None
 
     elapsed = time.time() - start
-    print(f"  [이미지 프롬프트 변환] 소요시간: {elapsed:.1f}초")
+    print(f"  [이미지 프롬프트 변환] 소요시간: {elapsed:.1f}초 (LLM 호출 {attempt}회)")
 
-    if result is None:
+    fallback_used = result is None
+    if fallback_used:
         print("  [이미지 프롬프트 변환] 최종 실패, 안전값으로 대체")
-        return _fallback_prompt(emotion)
+        result = _fallback_prompt(emotion)
+    else:
+        print(f"  [이미지 프롬프트 변환] positive: {result['positive']}")
+        print(f"  [이미지 프롬프트 변환] negative: {result['negative']}")
 
+    if report is not None:
+        report.update(total_sec=round(elapsed, 2), fallback_used=fallback_used,
+                      positive=result["positive"], negative=result["negative"])
     return result

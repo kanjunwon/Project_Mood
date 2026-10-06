@@ -126,17 +126,30 @@ def generate_diary_image(
     bangs: bool = True,
     hair_length: str = "medium",
     hair_color: str = "black",
+    timings: dict | None = None,
 ) -> str:
     """
     일기 텍스트 + 대표 감정 + Who/Where/When + 아바타 속성(안경/앞머리/머리길이/머리색) -> 그림일기 이미지 URL.
     glasses: "horn_rimmed" | "round" | "none"
+    timings: dict를 넘기면 단계별 소요시간(초)을 채워줌 (측정용)
     """
+    if timings is None:
+        timings = {}
+
+    t0 = time.time()
     prompt_result = translate_to_image_prompt(
         diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when
     )
     positive = f"{prompt_result['positive']}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
     negative = prompt_result.get("negative") or FALLBACK_NEGATIVE_PROMPT
+    t1 = time.time()
+    timings["image_prompt_sec"] = round(t1 - t0, 2)
 
     prompt_id = _submit_workflow(positive, negative)
     image_bytes = _wait_for_result(prompt_id)
-    return _upload_to_storage(image_bytes)
+    t2 = time.time()
+    timings["comfyui_sec"] = round(t2 - t1, 2)
+
+    url = _upload_to_storage(image_bytes)
+    timings["upload_sec"] = round(time.time() - t2, 2)
+    return url

@@ -212,25 +212,56 @@ def build_prompt(actual_user_content: str) -> str:
     )
 
 
-def _generate_once(prompt_str: str, temperature: float, max_new_tokens: int = 220) -> str:
+def _generate_once(
+    prompt_str: str,
+    temperature: float,
+    max_new_tokens: int = 220,
+    do_sample: bool = True,
+    extra_stop_strings: list | None = None,
+    stats: dict | None = None,
+) -> str:
+    """
+    do_sample/extra_stop_strings/stats는 이미지 프롬프트 변환 측정용으로 추가한 옵션.
+    기본값이면 예전과 완전히 같은 호출임 (일기 생성 쪽은 안 건드림).
+    stats에 dict를 넘기면 입력/생성 토큰 수, 소요시간, 잘리기 전 raw 출력을 채워줌.
+    """
+    import time
     import torch
     from app.models.llama_loader import get_model_and_tokenizer
 
     model, tokenizer = get_model_and_tokenizer()
     input_ids = tokenizer(prompt_str, return_tensors="pt")["input_ids"].to(model.device)
+
+    gen_kwargs = dict(
+        input_ids=input_ids,
+        max_new_tokens=max_new_tokens,
+        do_sample=do_sample,
+        repetition_penalty=1.2,
+        eos_token_id=tokenizer.eos_token_id,
+        tokenizer=tokenizer,
+        stop_strings=["\nHuman:", "Human:", "무엇을:"] + list(extra_stop_strings or []),
+    )
+    if do_sample:
+        gen_kwargs["temperature"] = temperature
+        gen_kwargs["top_p"] = 0.85  # 0.9 -> 0.85로 낮춰서 극단적으로 튀는 단어 선택 확률 축소
+
+    start = time.time()
     with torch.no_grad():
-        outputs = model.generate(
-            input_ids=input_ids,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=temperature,
-            top_p=0.85,  # 0.9 -> 0.85로 낮춰서 극단적으로 튀는 단어 선택 확률 축소
-            repetition_penalty=1.2,
-            eos_token_id=tokenizer.eos_token_id,
-            tokenizer=tokenizer,
-            stop_strings=["\nHuman:", "Human:", "무엇을:"]
-        )
-    generated_text = tokenizer.decode(outputs[0][input_ids.shape[-1]:], skip_special_tokens=True)
+        outputs = model.generate(**gen_kwargs)
+    elapsed = time.time() - start
+
+    new_tokens = outputs[0][input_ids.shape[-1]:]
+    generated_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+    if stats is not None:
+        stats["input_tokens"] = int(input_ids.shape[-1])
+        stats["output_tokens"] = int(new_tokens.shape[-1])
+        stats["max_new_tokens"] = max_new_tokens
+        stats["hit_max_new_tokens"] = int(new_tokens.shape[-1]) >= max_new_tokens
+        stats["elapsed_sec"] = round(elapsed, 2)
+        stats["tokens_per_sec"] = round(int(new_tokens.shape[-1]) / elapsed, 2) if elapsed > 0 else None
+        stats["raw_full"] = generated_text  # "Human:" 기준으로 자르기 전 전문
+
     return generated_text.split("Human:")[0].strip()
 
 
@@ -242,7 +273,9 @@ def _safe_fallback_diary(what: str, why: str, who_str: str, when: str, where: st
     return f"오늘은 {where}에서 {what}. {why}. 그런 하루였다."
 
 
-def generate_diary_text(what: str, why: str, who, when: str, where: str):
+def generate_diary_text(what: str, why: str, who, when: str, where: str, timings: dict | None = None):
+    # timings에 dict를 넘기면 생성/검증 시간과 시도 횟수를 채워줌 (측정용, 리턴값은 그대로)
+    import time
     who_str = ", ".join(who) if isinstance(who, list) else who
 
     if MOCK_MODE:
@@ -257,10 +290,20 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
     best_score = -1
     passed = False
 
+    gen_sec = 0.0
+    validate_sec = 0.0
+    attempts = 0
     for attempt in range(1, MAX_RETRIES + 1):
+        attempts = attempt
         temp = max(0.15, 0.45 - (attempt - 1) * 0.15)
+        t0 = time.time()
         candidate = _generate_once(prompt_str, temperature=temp)
+        t1 = time.time()
         is_ok, reasons, score = validate_diary(candidate, context_str=context_str)
+        t2 = time.time()
+        gen_sec += t1 - t0
+        validate_sec += t2 - t1
+        print(f"  [TIMING] 일기 생성 {attempt}번째 시도: 생성 {t1 - t0:.1f}초, 검증 {(t2 - t1) * 1000:.1f}ms")
 
         if score > best_score:
             best_score = score
@@ -277,5 +320,10 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str):
     if not passed:
         print(f"  경고: {MAX_RETRIES}번 다 실패, 안전 템플릿으로 대체함 (최선 후보 점수 {best_score}/9)")
         clean_diary = _safe_fallback_diary(what, why, who_str, when, where)
+
+    if timings is not None:
+        timings["diary_attempts"] = attempts
+        timings["diary_llm_sec"] = round(gen_sec, 2)
+        timings["diary_validate_sec"] = round(validate_sec, 4)
 
     return clean_diary, not passed
