@@ -217,9 +217,29 @@ SYSTEM_PREAMBLE_EMOTION_WORD = SYSTEM_PREAMBLE.replace(
     "그 기분을 꾸미거나 교훈으로 늘이지 않는다.\n",
 )
 
+# "fewshot_no_mealtime": few-shot 예시에서 식사시간대 단어(아침/점심/저녁)만 뺌.
+# 기존 예시는 일기 본문과 '언제'에 저녁/아침/점심을 쓰는데, 앱이 보내는 '언제'는 "오후 7시" 형식이라
+# 모델이 예시를 따라 '저녁'을 쓰면 '식사시간대 지어냄'으로 검증에서 떨어짐 (3번 예시는 원문 그대로도 불합격).
+_FEWSHOT_MEALTIME_FIXES = [
+    ("언제: 저녁 9시\n", "언제: 오후 9시\n"),
+    ("저녁 먹고 누워있는데", "밥 먹고 누워있는데"),
+    ("토요일 아침에 짐 좀 챙겨서", "토요일에 짐 좀 챙겨서"),
+    ("엄마가 벌써 점심 준비하고 계셨다", "엄마가 벌써 밥 준비하고 계셨다"),
+    ("티비 좀 보다가 저녁까지 먹고", "티비 좀 보다가 밥 한 끼 더 먹고"),
+    ("언제: 저녁 7시\n", "언제: 오후 7시\n"),
+    ("저녁에 동네 카페에서", "동네 카페에서"),
+    ("언제: 저녁\n", "언제: 오후 7시\n"),
+    ("친구 생일이라고 해서 저녁에 걔네 집으로", "친구 생일이라고 해서 걔네 집으로"),
+]
+FEWSHOT_EXAMPLES_NO_MEALTIME = FEWSHOT_EXAMPLES
+for _old, _new in _FEWSHOT_MEALTIME_FIXES:
+    assert FEWSHOT_EXAMPLES_NO_MEALTIME.count(_old) == 1, _old
+    FEWSHOT_EXAMPLES_NO_MEALTIME = FEWSHOT_EXAMPLES_NO_MEALTIME.replace(_old, _new)
+
 PROMPT_VARIANTS = {
     "base": (SYSTEM_PREAMBLE, FEWSHOT_EXAMPLES),
     "emotion_word": (SYSTEM_PREAMBLE_EMOTION_WORD, FEWSHOT_EXAMPLES),
+    "fewshot_no_mealtime": (SYSTEM_PREAMBLE, FEWSHOT_EXAMPLES_NO_MEALTIME),
 }
 
 

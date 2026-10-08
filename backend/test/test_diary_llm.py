@@ -100,3 +100,33 @@ def test_variant_is_passed_to_generation(fake_llm):
     ls.generate_diary_text("과제", "마감이라", "혼자", "오후 2시", "카페", timings=timings, prompt_variant="emotion_word")
     assert calls[0]["prompt"].startswith(ls.SYSTEM_PREAMBLE_EMOTION_WORD)
     assert timings["prompt_variant"] == "emotion_word"
+
+
+def _fewshot_pairs(fewshot):
+    import re
+    blocks = fewshot.split("Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라:\n\n")[1:]
+    pairs = []
+    for b in blocks:
+        info, diary = b.split("Assistant:\n")
+        f = dict(re.findall(r"(무엇을|이유|누구와|언제|어디서): (.*)", info))
+        ctx = ls.expand_context(f"{f['누구와']} {f['무엇을']} {f['이유']} {f['언제']} {f['어디서']}")
+        pairs.append((f, diary.strip(), ctx))
+    return pairs
+
+
+def test_current_fewshot_example3_fails_own_validator():
+    # 0단계에서 확인한 약점 기록: 기본 few-shot 3번 예시(본가 방문)는 지금 검증 기준으로 불합격
+    results = [ls.validate_diary(d, context_str=c)[0] for _, d, c in _fewshot_pairs(ls.FEWSHOT_EXAMPLES)]
+    assert results == [True, True, False, True, True]
+
+
+def test_fewshot_no_mealtime_variant_passes_validator_and_has_no_mealtime_words():
+    pairs = _fewshot_pairs(ls.FEWSHOT_EXAMPLES_NO_MEALTIME)
+    assert len(pairs) == 5
+    for f, diary, ctx in pairs:
+        ok, reasons, _ = ls.validate_diary(diary, context_str=ctx)
+        assert ok, (f["무엇을"], reasons)
+        for word in ls.MEALTIME_KEYWORDS:
+            assert word not in diary and word not in f["언제"]
+    # 시스템 프롬프트는 그대로, 예시만 바뀜
+    assert ls.PROMPT_VARIANTS["fewshot_no_mealtime"][0] == ls.SYSTEM_PREAMBLE
