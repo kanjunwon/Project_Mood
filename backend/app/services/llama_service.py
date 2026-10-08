@@ -296,17 +296,27 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
     gen_sec = 0.0
     validate_sec = 0.0
     attempts = 0
+    attempt_details = []  # 시도별 측정값 (불합격 사유 집계/지어내기 집계용)
     for attempt in range(1, MAX_RETRIES + 1):
         attempts = attempt
         temp = max(0.15, 0.45 - (attempt - 1) * 0.15)
+        stats = {}
         t0 = time.time()
-        candidate = _generate_once(prompt_str, temperature=temp)
+        candidate = _generate_once(prompt_str, temperature=temp, stats=stats)
         t1 = time.time()
         is_ok, reasons, score = validate_diary(candidate, context_str=context_str)
         t2 = time.time()
         gen_sec += t1 - t0
         validate_sec += t2 - t1
-        print(f"  [TIMING] 일기 생성 {attempt}번째 시도: 생성 {t1 - t0:.1f}초, 검증 {(t2 - t1) * 1000:.1f}ms")
+        print(f"  [TIMING] 일기 생성 {attempt}번째 시도: 생성 {t1 - t0:.1f}초 "
+              f"(입력 {stats.get('input_tokens')}토큰, 생성 {stats.get('output_tokens')}토큰, "
+              f"{stats.get('tokens_per_sec')}tok/s), 검증 {(t2 - t1) * 1000:.1f}ms")
+        attempt_details.append({
+            "attempt": attempt, "temperature": temp, "passed": is_ok, "reasons": reasons, "score": score,
+            "gen_sec": round(t1 - t0, 2), "input_tokens": stats.get("input_tokens"),
+            "output_tokens": stats.get("output_tokens"), "tokens_per_sec": stats.get("tokens_per_sec"),
+            "hit_max_new_tokens": stats.get("hit_max_new_tokens"), "text": candidate,
+        })
 
         if score > best_score:
             best_score = score
@@ -328,5 +338,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
         timings["diary_attempts"] = attempts
         timings["diary_llm_sec"] = round(gen_sec, 2)
         timings["diary_validate_sec"] = round(validate_sec, 4)
+        timings["diary_attempt_details"] = attempt_details
+        timings["diary_fallback"] = not passed
 
     return clean_diary, not passed

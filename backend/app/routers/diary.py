@@ -89,9 +89,13 @@ def _created_at_for(entry_date: Optional[date_cls]) -> Optional[str]:
     return stamp.isoformat()
 
 
-def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date_cls]) -> DiaryResponse:
-    """일기 생성 -> 감정 분석 -> 가중치 -> 이미지 -> DB 저장. 동기 /generate-diary와 job 방식이 같이 씀."""
-    timings = {}
+def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date_cls],
+                  diag: Optional[dict] = None) -> DiaryResponse:
+    """
+    일기 생성 -> 감정 분석 -> 가중치 -> 이미지 -> DB 저장. 동기 /generate-diary와 job 방식이 같이 씀.
+    diag: dict를 넘기면 단계별 시간, 일기 시도별 기록, KoBERT 원본 점수를 채워줌 (측정용, 동작은 그대로)
+    """
+    timings = diag if diag is not None else {}
     t_start = time.time()
 
     # user_id는 body가 아니라 로그인 토큰에서만 가져옴. 이 값으로 프로필(아바타 설정)도
@@ -130,10 +134,13 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
 
     # 퍼스널 검사 기반 가중치 적용 (종현 설계, 2026-09-24 확정: 정서가x연속값 각성도, alpha=0.4)
     # 검사를 한 번도 안 했거나 KoBERT 자체가 실패한 경우엔 원본(KoBERT raw) 그대로 사용.
+    timings["kobert_raw_scores"] = dict(emotion_result["scores"]) if emotion_result.get("scores") else None
+    timings["weight_applied"] = False
     if emotion_result.get("scores"):
         try:
             weight_profile = get_latest_weight_profile(str(user_id))
             if weight_profile and weight_profile.get("weights"):
+                timings["weight_applied"] = True
                 adjusted_scores = apply_weight(emotion_result["scores"], weight_profile["weights"])
                 emotion_result["scores"] = adjusted_scores
                 emotion_result["top_emotion"] = max(adjusted_scores, key=adjusted_scores.get)
@@ -233,9 +240,12 @@ def _cleanup_jobs() -> None:
 
 
 def _job_worker(job_id: str, request: DiaryRequest, user_id: int, entry_date: Optional[date_cls]) -> None:
+    with _JOBS_LOCK:
+        diag = _JOBS[job_id].setdefault("diag", {}) if job_id in _JOBS else {}
     try:
         with _PIPELINE_LOCK:
-            result = _run_pipeline(request, user_id, entry_date)
+            diag["lock_acquired_at"] = time.time()  # 앞 작업 대기시간과 실제 처리시간을 구분하려고
+            result = _run_pipeline(request, user_id, entry_date, diag=diag)
         update = {"status": "done", "result": result, "error": None}
     except HTTPException as e:
         update = {"status": "error", "result": None, "error": str(e.detail)}
