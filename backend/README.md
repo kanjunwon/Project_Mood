@@ -32,6 +32,7 @@ COMFYUI_URL=
 
 - `MOCK_MODE=true`: 실제 AI 모델(LLaMA/KoBERT) 없이 가짜 응답으로 API 테스트 (GPU 없는 환경에서 개발할 때 사용)
 - `MOCK_MODE=false`: 실제 모델 로딩, GPU 필요
+- `PRELOAD_MODELS` (기본 true): 서버 시작 때 LLM/KoBERT를 미리 로딩해서 재시작 직후 첫 요청이 느려지지 않게 함 (로딩 1~2분 동안은 서버가 요청을 안 받음, "Application startup complete"가 뜨면 준비 끝). 끄려면 `PRELOAD_MODELS=false`. MOCK_MODE=true면 항상 건너뜀
 - `SUPABASE_URL` / `SUPABASE_KEY`: 재유한테 받은 값
 - `HF_TOKEN`: Hugging Face 토큰 (LLaMA 모델 다운로드용, gated 저장소면 모델 페이지에서 라이선스 동의도 필요)
 - `JWT_SECRET`: 로그인 토큰 서명용 랜덤 문자열

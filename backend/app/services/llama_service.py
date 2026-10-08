@@ -237,6 +237,9 @@ def _generate_once(
         max_new_tokens=max_new_tokens,
         do_sample=do_sample,
         repetition_penalty=1.2,
+        # EEVE의 config.json에 "use_cache": false 가 들어있어서, 명시하지 않으면 KV 캐시가 꺼진 채로
+        # 토큰마다 입력 전체를 다시 계산함 (1.8 tok/s -> 켜면 약 18 tok/s). 반드시 True로 고정.
+        use_cache=True,
         eos_token_id=tokenizer.eos_token_id,
         tokenizer=tokenizer,
         stop_strings=["\nHuman:", "Human:", "무엇을:"] + list(extra_stop_strings or []),
