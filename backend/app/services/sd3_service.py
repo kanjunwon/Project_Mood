@@ -121,6 +121,42 @@ def apply_gender(positive: str, negative: str, gender) -> tuple[str, str]:
     return new_positive, new_negative
 
 
+# --- "혼자" 인원 보정 (2026-10 추가) ---
+# 이미지 프롬프트 변환 LLM이 가끔 인원 태그(1girl/1boy/solo)를 통째로 빼먹는다.
+# 사람 수 태그가 없으면 모델이 임의로 여러 명을 그리므로, Who가 "혼자"뿐이면 서버가 직접 확정한다.
+_SOLO_NEGATIVE = "multiple girls, multiple boys, 2girls, 2boys, 3girls, 3boys, group"
+
+
+def is_solo(who) -> bool:
+    """Who가 '혼자'만 선택된 경우 True (문자열 "혼자" / ["혼자"] / "혼자, 혼자" 모두)."""
+    if isinstance(who, str):
+        items = re.split(r"[,/]", who)
+    else:
+        items = [str(x) for x in (who or [])]
+    items = [i.strip() for i in items if i and i.strip()]
+    return bool(items) and all(i == "혼자" for i in items)
+
+
+def ensure_solo_person(positive: str, negative: str, who, gender) -> tuple[str, str]:
+    """
+    Who가 '혼자'인데 LLM 프롬프트에 인원 태그가 하나도 없으면, 맨 앞에 '1boy|1girl, solo'를 넣는다.
+    - 성별 남성: 1boy, 여성: 1girl, 모르면 solo만
+    - 인원 태그가 이미 있으면(LLM이 제대로 만든 경우) 손대지 않고 solo 태그만 보강
+    """
+    if not is_solo(who):
+        return positive, negative
+    tags = [t.strip() for t in positive.split(",") if t.strip()]
+    if any(_PERSON_TAG.match(t) for t in tags):
+        if "solo" not in tags and "alone" not in tags:
+            tags.insert(0, "solo")
+            positive = ", ".join(tags)
+        return positive, negative
+    kind = normalize_gender(gender)
+    lead = {"male": ["1boy", "solo"], "female": ["1girl", "solo"]}.get(kind, ["solo"])
+    new_negative = f"{negative}, {_SOLO_NEGATIVE}" if negative else _SOLO_NEGATIVE
+    return ", ".join(lead + tags), new_negative
+
+
 def _submit_workflow(positive_prompt: str, negative_prompt: str) -> str:
     workflow = load_workflow_template()
     workflow[POSITIVE_PROMPT_NODE_ID]["inputs"]["text"] = positive_prompt
@@ -193,11 +229,12 @@ def generate_diary_image(
     positive_body = prompt_result["positive"]
     negative = prompt_result.get("negative") or FALLBACK_NEGATIVE_PROMPT
     positive_body_before = positive_body
+    positive_body, negative = ensure_solo_person(positive_body, negative, who, gender)
     positive_body, negative = apply_gender(positive_body, negative, gender)
     positive = f"{positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
     print(
         f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "
-        f"보정 {'적용됨' if positive_body != positive_body_before else '없음(1인 구도 아니거나 남성이 아님)'}"
+        f"who={who!r}, 보정 {'적용됨' if positive_body != positive_body_before else '없음'}"
     )
     print(f"  [최종 positive] {positive}")
     print(f"  [최종 negative] {negative}")
