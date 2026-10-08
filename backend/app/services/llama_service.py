@@ -201,10 +201,35 @@ def validate_diary(text: str, context_str: str = ""):
     return passed, reasons, score
 
 
-def build_prompt(actual_user_content: str) -> str:
+# ---------- 측정용 프롬프트 변형 (기본값 아님) ----------
+# 기본(None/"base")은 위 SYSTEM_PREAMBLE/FEWSHOT_EXAMPLES 그대로. 변형은 측정용 디버그 엔드포인트에서만
+# 고를 수 있고, 한 변형은 한 가지만 바꿈 (전후 비교용). 채택하면 그때 기본값으로 올림.
+
+_RULE2_TAIL = "그냥 있었던 일 적고 끝내거나 사소한 잡생각으로 끝나도 된다.\n"
+assert SYSTEM_PREAMBLE.count(_RULE2_TAIL) == 1
+
+# "emotion_word": 규칙 2번 마지막 문장만 바꿈. 마무리 부근에 그날 기분을 평범한 단어 하나로 쓰게 허용.
+# (KoBERT가 감정을 고를 단서가 일기에 없어서 확률이 갈리는 문제 대응. 교훈형/과장형 금지는 그대로)
+SYSTEM_PREAMBLE_EMOTION_WORD = SYSTEM_PREAMBLE.replace(
+    _RULE2_TAIL,
+    "다만 마무리 부근에 그날 든 기분을 평범한 말 하나로 적는다 (예: '재밌었다', '답답했다', "
+    "'뿌듯했다', '피곤했다'). 기분은 '무엇을'과 '이유'에서 짐작되는 것으로만 고르고, "
+    "그 기분을 꾸미거나 교훈으로 늘이지 않는다.\n",
+)
+
+PROMPT_VARIANTS = {
+    "base": (SYSTEM_PREAMBLE, FEWSHOT_EXAMPLES),
+    "emotion_word": (SYSTEM_PREAMBLE_EMOTION_WORD, FEWSHOT_EXAMPLES),
+}
+
+
+def build_prompt(actual_user_content: str, variant: str | None = None) -> str:
+    if (variant or "base") not in PROMPT_VARIANTS:
+        raise ValueError(f"알 수 없는 프롬프트 변형: {variant} (가능: {', '.join(PROMPT_VARIANTS)})")
+    preamble, fewshot = PROMPT_VARIANTS[variant or "base"]
     return (
-        f"{SYSTEM_PREAMBLE}\n"
-        f"{FEWSHOT_EXAMPLES}\n"
+        f"{preamble}\n"
+        f"{fewshot}\n"
         f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 "
         f"(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것):\n\n"
         f"{actual_user_content}\n"
@@ -276,8 +301,10 @@ def _safe_fallback_diary(what: str, why: str, who_str: str, when: str, where: st
     return f"오늘은 {where}에서 {what}. {why}. 그런 하루였다."
 
 
-def generate_diary_text(what: str, why: str, who, when: str, where: str, timings: dict | None = None):
+def generate_diary_text(what: str, why: str, who, when: str, where: str, timings: dict | None = None,
+                        prompt_variant: str | None = None):
     # timings에 dict를 넘기면 생성/검증 시간과 시도 횟수를 채워줌 (측정용, 리턴값은 그대로)
+    # prompt_variant: 측정용 프롬프트 변형 (PROMPT_VARIANTS). None이면 기본 프롬프트 = 기존 동작
     import time
     who_str = ", ".join(who) if isinstance(who, list) else who
 
@@ -285,7 +312,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
         return _mock_generate(what), False
 
     actual_user_content = f"무엇을: {what}\n이유: {why}\n누구와: {who_str}\n언제: {when}\n어디서: {where}"
-    prompt_str = build_prompt(actual_user_content)
+    prompt_str = build_prompt(actual_user_content, variant=prompt_variant)
     context_str = expand_context(f"{who_str} {what} {why} {when} {where}")
 
     clean_diary = ""
@@ -340,5 +367,6 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
         timings["diary_validate_sec"] = round(validate_sec, 4)
         timings["diary_attempt_details"] = attempt_details
         timings["diary_fallback"] = not passed
+        timings["prompt_variant"] = prompt_variant or "base"
 
     return clean_diary, not passed
