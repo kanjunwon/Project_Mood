@@ -40,13 +40,13 @@ import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import kotlinx.coroutines.delay
 
-// 아래 타이밍 상수들은 실제 서버 진행 상황을 알 수 없어 경험적으로 잡은 값이다. 백엔드 응답
-// 시간이 바뀌면 여기를 조정하면 된다 - 실제로 얼마나 걸리는지는 DiaryViewModel.submitDiary()가
-// Logcat에 남기는 "DiaryGenTiming" 태그 로그로 확인할 것 (POST /generate-diary 왕복 시간).
+// 아래 타이밍 상수들은 실제 서버 진행 상황을 알 수 없어 경험적으로 잡은 값이다. 실제로 얼마나
+// 걸리는지는 DiaryViewModel이 Logcat에 남기는 "DiaryGenTiming" 태그 로그로 확인할 것(job 생성
+// + 폴링 완료까지 걸린 전체 시간).
 //
-// 현재는 60초 기준(PROGRESS_RAMP_SECONDS)으로 맞춰져 있다. 백엔드가 이미지 프롬프트 변환 단계를
-// 최적화하면서 평균 응답 시간이 60초 안팎으로 줄었기 때문 (예전엔 120초를 넘겨 타임아웃이 나던
-// 수준이라 180초 기준이었음).
+// job 폴링 방식으로 바뀌면서 전체 대기 시간은 최대 6분(DiaryViewModel.MAX_POLL_MILLIS)까지
+// 늘어날 수 있지만, 아래 PROGRESS_RAMP_SECONDS(60초) 이후로는 progressForElapsed가 아주 느리게
+// crawl하며 0.97까지만 차오르게 해서 60초보다 오래 걸려도 멈춘 것처럼 보이지 않는다.
 private data class GeneratingPhrase(val atSeconds: Int, val text: String)
 
 private val generatingPhrases = listOf(
@@ -88,10 +88,16 @@ fun DiaryGeneratingScreen(
     var retryCount by remember { mutableStateOf(0) }
     var elapsedSeconds by remember { mutableStateOf(0f) }
 
-    // attempt가 바뀔 때마다(최초 진입 + 재시도) 요청을 다시 보내고 경과 시간 측정을 처음부터 시작한다.
+    // attempt가 바뀔 때마다(최초 진입 + 재시도) 경과 시간 측정을 처음부터 시작한다. 최초 진입만
+    // submitDiary()로 새 job을 만들고, 그 뒤 재시도는 retryGeneration()에 맡긴다 - 이 함수가
+    // 중복 생성 방지 조건(새 job을 만들지, 기존 job을 이어 폴링할지)을 판단한다.
     LaunchedEffect(attempt) {
         elapsedSeconds = 0f
-        diaryViewModel.submitDiary()
+        if (attempt == 0) {
+            diaryViewModel.submitDiary()
+        } else {
+            diaryViewModel.retryGeneration()
+        }
         val startMillis = System.currentTimeMillis()
         while (diaryViewModel.generationState is DiaryGenerationState.Loading) {
             delay(TICK_MILLIS)
@@ -143,7 +149,7 @@ fun DiaryGeneratingScreen(
         if (errorState != null) {
             DiaryGeneratingErrorContent(
                 message = errorState.message,
-                canRetry = retryCount < MAX_RETRIES,
+                canRetry = errorState.canRetry && retryCount < MAX_RETRIES,
                 onRetry = {
                     retryCount++
                     attempt++

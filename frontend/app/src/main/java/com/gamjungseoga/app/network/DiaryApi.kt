@@ -4,11 +4,18 @@ import com.google.gson.annotations.SerializedName
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 // backend/app/routers/diary.py, backend/app/schemas/diary.py 와 1:1로 맞춘 인터페이스
 interface DiaryApi {
-    @POST("generate-diary")
-    suspend fun generateDiary(@Body request: DiaryGenerateRequest): DiaryGenerateResponse
+    // 227초가 걸리던 동기 엔드포인트(POST /generate-diary)는 120초 타임아웃에 항상 걸려서
+    // job 방식으로 대체됐다. createDiaryJob은 1초 이내에 jobId만 돌려주고, 실제 생성 결과는
+    // getDiaryJob을 폴링해서 받는다.
+    @POST("generate-diary/jobs")
+    suspend fun createDiaryJob(@Body request: DiaryGenerateRequest): DiaryJobCreated
+
+    @GET("generate-diary/jobs/{jobId}")
+    suspend fun getDiaryJob(@Path("jobId") jobId: String): DiaryJobStatus
 
     @GET("diaries/me")
     suspend fun getDiaries(): DiaryListResponse
@@ -19,7 +26,22 @@ data class DiaryGenerateRequest(
     val why: String,
     val who: String,
     @SerializedName("when") val whenText: String,
-    val where: String
+    val where: String,
+    // 서버가 날짜를 우선적으로 이 필드에서 읽고, whenText(자유 형식 문장)의 날짜 파싱은 보조
+    // 수단으로만 쓴다. "YYYY-MM-DD" 형식.
+    val date: String
+)
+
+data class DiaryJobCreated(
+    @SerializedName("job_id") val jobId: String,
+    val status: String
+)
+
+data class DiaryJobStatus(
+    @SerializedName("job_id") val jobId: String,
+    val status: String, // processing | done | error
+    val result: DiaryGenerateResponse? = null,
+    val error: String? = null
 )
 
 data class DiaryGenerateResponse(
@@ -29,7 +51,8 @@ data class DiaryGenerateResponse(
     @SerializedName("top_emotion") val topEmotion: String? = null,
     @SerializedName("emotion_scores") val emotionScores: Map<String, Double>? = null,
     @SerializedName("sentiment_score") val sentimentScore: Double? = null,
-    @SerializedName("image_url") val imageUrl: String? = null
+    @SerializedName("image_url") val imageUrl: String? = null,
+    val id: Long? = null
 )
 
 data class DiaryListResponse(

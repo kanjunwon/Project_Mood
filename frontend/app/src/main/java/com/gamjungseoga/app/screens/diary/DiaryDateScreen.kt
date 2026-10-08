@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
+import com.gamjungseoga.app.network.SEOUL_ZONE
 import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
@@ -69,6 +71,9 @@ fun DiaryDateScreen(
     dayImageUrls: Map<LocalDate, String> = emptyMap()
 ) {
     var displayedMonth by remember { mutableStateOf(YearMonth.from(initialDate)) }
+    // 기기 시간대가 아니라 서버 기준(서울)으로 "오늘"을 판단해야 다른 시간대 기기에서도
+    // 기준이 서버 데이터와 어긋나지 않는다.
+    val today = remember { LocalDate.now(SEOUL_ZONE) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -90,6 +95,7 @@ fun DiaryDateScreen(
             Spacer(Modifier.height(8.dp))
             CalendarGrid(
                 month = displayedMonth,
+                today = today,
                 modifier = Modifier.padding(horizontal = 16.dp),
                 onDayClick = onDateSelected,
                 dayImageUrls = dayImageUrls
@@ -151,6 +157,7 @@ private fun WeekdayHeaderRow() {
 @Composable
 private fun CalendarGrid(
     month: YearMonth,
+    today: LocalDate,
     onDayClick: (LocalDate) -> Unit,
     dayImageUrls: Map<LocalDate, String>,
     modifier: Modifier = Modifier
@@ -168,8 +175,13 @@ private fun CalendarGrid(
             ) {
                 week.forEach { date ->
                     if (date != null) {
+                        // 미래 날짜는 서버가 400으로 거부하니(일기를 미리 쓸 수 없음) 클릭을
+                        // 막고 흐리게 표시한다. 기준은 기기 시간이 아니라 서울 시간(오늘).
+                        val isFuture = date.isAfter(today)
                         Column(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .alpha(if (isFuture) 0.4f else 1f),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Box(
@@ -178,7 +190,7 @@ private fun CalendarGrid(
                                     .aspectRatio(132f / 182f)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(CalendarCellGray)
-                                    .clickable { onDayClick(date) }
+                                    .let { if (isFuture) it else it.clickable { onDayClick(date) } }
                             ) {
                                 // 백엔드에서 그 날짜의 기록 썸네일 URL을 주면 이미지로, 없으면 빈 칸 그대로
                                 val imageUrl = dayImageUrls[date]

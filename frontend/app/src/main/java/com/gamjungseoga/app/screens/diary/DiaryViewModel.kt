@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gamjungseoga.app.network.ApiClient
+import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.network.DiaryGenerateRequest
 import com.gamjungseoga.app.network.DiaryGenerateResponse
 import com.gamjungseoga.app.network.describeHttpException
@@ -19,13 +20,20 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
-// POST /generate-diary 실제 소요 시간을 재는 용도 (개발 중에만 확인). DiaryGeneratingScreen의
-// 진행바/문구 타이밍(PROGRESS_RAMP_SECONDS 등)을 실제 백엔드 응답 시간에 맞추기 위해 이 로그로
-// 측정한 뒤 그 값을 기준으로 조정한다.
+// job 생성/폴링 소요 시간을 재는 용도 (개발 중에만 확인).
 private const val DIARY_GEN_TIMING_TAG = "DiaryGenTiming"
+
+// getDiaryJob을 3초 간격으로 폴링하고, 최대 6분까지 기다린다. 작업 자체는 1~2초짜리 요청이라
+// 이 간격/상한은 서버 응답 지연이 아니라 "일기+그림 생성"이 끝날 때까지 기다리는 시간이다.
+private const val POLL_INTERVAL_MILLIS = 3_000L
+private const val MAX_POLL_MILLIS = 6 * 60 * 1_000L
+
+// 폴링 중 네트워크 오류가 한두 번 나는 것은 흔하니, 연속으로 이 횟수만큼 실패할 때만 포기한다.
+private const val MAX_CONSECUTIVE_POLL_FAILURES = 3
 
 data class DiaryDraft(
     val date: LocalDate = LocalDate.now(),
@@ -41,7 +49,13 @@ sealed interface DiaryGenerationState {
     data object Idle : DiaryGenerationState
     data object Loading : DiaryGenerationState
     data class Success(val response: DiaryGenerateResponse) : DiaryGenerationState
-    data class Error(val message: String) : DiaryGenerationState
+
+    // jobId가 있으면 그 job이 아직 살아있을 수 있다는 뜻이라 재시도 시 새 job을 만들지 않고
+    // 그 job을 이어서 폴링한다(폴링 타임아웃/연속 네트워크 실패처럼 최종 결과를 모르는 경우).
+    // jobId가 null이면 재시도해도 안전하게 새 job을 만들 수 있다는 뜻이다(job 생성 자체가
+    // 실패했거나, job이 이미 확정적으로 끝났다는 걸 확인한 경우 - 서버 쪽에 저장된 게 없으므로
+    // 중복이 생기지 않는다).
+    data class Error(val message: String, val jobId: String?, val canRetry: Boolean) : DiaryGenerationState
 }
 
 class DiaryViewModel : ViewModel() {
@@ -79,37 +93,161 @@ class DiaryViewModel : ViewModel() {
         draft = draft.copy(where = text)
     }
 
-    // DiaryWhereScreen에서 "다음으로"를 눌렀을 때 호출: 지금까지 작성한 답변들을
-    // 백엔드 POST /generate-diary 로 보내서 일기 생성 + 감정분석 결과를 받아온다.
+    // DiaryWhereScreen에서 "다음으로"를 눌렀을 때 호출: job을 새로 만들고 폴링을 시작한다.
     fun submitDiary() {
         if (generationState is DiaryGenerationState.Loading) return
         generationState = DiaryGenerationState.Loading
+        val request = buildRequest(draft)
 
         viewModelScope.launch {
-            try {
-                val current = draft
-                val who = (current.who.toList() + listOfNotNull(current.whoCustom.trim().takeIf { it.isNotEmpty() }))
-                    .ifEmpty { listOf("혼자") }
-                    .joinToString(",")
-
-                val request = DiaryGenerateRequest(
-                    what = current.what.trim(),
-                    why = current.why.trim(),
-                    who = who,
-                    whenText = formatWhen(current.date, current.time),
-                    where = current.where.trim()
-                )
-
-                val startMillis = System.currentTimeMillis()
-                val response = ApiClient.diaryApi.generateDiary(request)
-                val elapsedMillis = System.currentTimeMillis() - startMillis
-                Log.d(DIARY_GEN_TIMING_TAG, "POST /generate-diary 응답 수신: ${elapsedMillis}ms (${elapsedMillis / 1000.0}s)")
-                generationState = DiaryGenerationState.Success(response)
-            } catch (e: Exception) {
-                generationState = DiaryGenerationState.Error(describeError(e))
-            }
+            val startMillis = System.currentTimeMillis()
+            generationState = createJobAndPoll(request)
+            logElapsed(startMillis)
         }
     }
+
+    // DiaryGeneratingScreen의 "다시 시도하기"에서 호출. 중복 생성을 막기 위해, 직전 Error 상태의
+    // jobId가 남아있으면(=job이 이미 만들어졌고 결과를 아직 모름) 새 job을 만들지 않고 그 job을
+    // 이어서 폴링한다. jobId가 없으면(=job 생성 자체가 실패했거나 확정적으로 끝남을 확인함) 새
+    // job을 만든다.
+    fun retryGeneration() {
+        if (generationState is DiaryGenerationState.Loading) return
+        val errorState = generationState as? DiaryGenerationState.Error ?: return
+        if (!errorState.canRetry) return
+
+        generationState = DiaryGenerationState.Loading
+        val request = buildRequest(draft)
+        val existingJobId = errorState.jobId
+
+        viewModelScope.launch {
+            val startMillis = System.currentTimeMillis()
+            generationState = if (existingJobId != null) {
+                pollJob(existingJobId, request)
+            } else {
+                createJobAndPoll(request)
+            }
+            logElapsed(startMillis)
+        }
+    }
+
+    private suspend fun createJobAndPoll(request: DiaryGenerateRequest): DiaryGenerationState {
+        val jobId = try {
+            ApiClient.diaryApi.createDiaryJob(request).jobId
+        } catch (e: Exception) {
+            return DiaryGenerationState.Error(describeError(e), jobId = null, canRetry = true)
+        }
+        return pollJob(jobId, request)
+    }
+
+    private suspend fun pollJob(jobId: String, request: DiaryGenerateRequest): DiaryGenerationState {
+        val deadlineMillis = System.currentTimeMillis() + MAX_POLL_MILLIS
+        var consecutiveFailures = 0
+
+        while (System.currentTimeMillis() < deadlineMillis) {
+            delay(POLL_INTERVAL_MILLIS)
+            try {
+                val status = ApiClient.diaryApi.getDiaryJob(jobId)
+                consecutiveFailures = 0
+                when (status.status) {
+                    "done" -> {
+                        val result = status.result
+                        return if (result != null) {
+                            DiaryGenerationState.Success(result)
+                        } else {
+                            DiaryGenerationState.Error(
+                                "일기 생성 결과를 받지 못했어요. 다시 시도해주세요.",
+                                jobId = null,
+                                canRetry = true
+                            )
+                        }
+                    }
+                    "error" -> return DiaryGenerationState.Error(
+                        status.error?.let { limitErrorMessageLength(it) } ?: "일기 생성에 실패했어요.",
+                        jobId = null,
+                        canRetry = true
+                    )
+                    else -> Unit // processing - 계속 폴링
+                }
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    // job이 만료됐거나 서버가 재시작된 경우. 이미 생성+저장이 끝났을 수 있으니
+                    // 최신 일기 목록에서 지금 작성 중인 내용과 일치하는 일기가 있는지 확인한다.
+                    val matched = findMatchingDiary(request)
+                    return if (matched != null) {
+                        DiaryGenerationState.Success(diaryGenerateResponseFrom(matched))
+                    } else {
+                        DiaryGenerationState.Error(
+                            "일기 생성 작업을 찾을 수 없어요. 다시 시도해주세요.",
+                            jobId = null,
+                            canRetry = true
+                        )
+                    }
+                }
+                consecutiveFailures++
+                if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+                    return DiaryGenerationState.Error(describeError(e), jobId = jobId, canRetry = true)
+                }
+            } catch (e: Exception) {
+                consecutiveFailures++
+                if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+                    return DiaryGenerationState.Error(describeError(e), jobId = jobId, canRetry = true)
+                }
+            }
+        }
+
+        return DiaryGenerationState.Error(
+            "일기 생성이 너무 오래 걸리고 있어요. 다시 시도해주세요.",
+            jobId = jobId,
+            canRetry = true
+        )
+    }
+
+    // getDiaryJob이 404를 준 뒤, 방금 보낸 요청과 같은 내용의 일기가 이미 저장돼 있는지 확인.
+    // 같은 내용으로 두 번 작성하는 극히 드문 경우를 제외하면 충분히 안전한 매칭이다.
+    private suspend fun findMatchingDiary(request: DiaryGenerateRequest): DiaryEntry? {
+        val diaries = runCatching { ApiClient.diaryApi.getDiaries().diaries }.getOrNull() ?: return null
+        return diaries
+            .sortedByDescending { it.createdAt ?: "" }
+            .firstOrNull { entry ->
+                entry.what == request.what &&
+                    entry.why == request.why &&
+                    entry.who == request.who &&
+                    entry.where == request.where
+            }
+    }
+
+    private fun logElapsed(startMillis: Long) {
+        val elapsedMillis = System.currentTimeMillis() - startMillis
+        Log.d(DIARY_GEN_TIMING_TAG, "일기 생성 완료까지: ${elapsedMillis}ms (${elapsedMillis / 1000.0}s)")
+    }
+}
+
+private fun diaryGenerateResponseFrom(entry: DiaryEntry): DiaryGenerateResponse = DiaryGenerateResponse(
+    status = "success",
+    generatedDiary = entry.generatedDiary.orEmpty(),
+    validationFailed = entry.validationFailed,
+    topEmotion = entry.topEmotion,
+    emotionScores = entry.emotionScores,
+    sentimentScore = entry.sentimentScore,
+    imageUrl = entry.imageUrl,
+    id = entry.id
+)
+
+private val isoDateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+private fun buildRequest(draft: DiaryDraft): DiaryGenerateRequest {
+    val who = (draft.who.toList() + listOfNotNull(draft.whoCustom.trim().takeIf { it.isNotEmpty() }))
+        .ifEmpty { listOf("혼자") }
+        .joinToString(",")
+
+    return DiaryGenerateRequest(
+        what = draft.what.trim(),
+        why = draft.why.trim(),
+        who = who,
+        whenText = formatWhen(draft.date, draft.time),
+        where = draft.where.trim(),
+        date = draft.date.format(isoDateFormatter)
+    )
 }
 
 // 개발 중 백엔드 연결 문제를 바로 알아볼 수 있게, 흔한 네트워크 예외를 원인이 드러나는 문구로 바꿔준다.
