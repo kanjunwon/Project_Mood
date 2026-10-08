@@ -5,26 +5,26 @@ backend/scripts/measure_image_prompt.py
 [서버 켰을 때 순서] (서버비 시간당 약 $0.56 -> 전체 20~30분 안에 끝내기)
   ※ 서버 파이썬 환경은 backend/venv (--system-site-packages). 터미널마다 source venv/bin/activate를 맨 먼저 하고,
     pip install은 반드시 venv 안에서만 (시스템 환경에 깔다가 패키지 충돌 난 적 있음).
-  1. RunPod Pod Start -> 웹 터미널 2개 열기
-  2. (터미널 1) cd /workspace/<레포>/backend
-                source venv/bin/activate        # 반드시 먼저
-                git pull
-                grep -v "^torch" requirements.txt > requirements_nogpu.txt && pip install -r requirements_nogpu.txt   # venv 안에서만
-  3. (터미널 1) .env에 아래 한 줄 추가 (측정 끝나면 지우기):
-                ENABLE_DEBUG_ENDPOINTS=true
-  4. (터미널 1) ComfyUI가 안 떠 있으면 먼저 실행, 그다음
+  0. RunPod Pod Start -> 웹 터미널 2개 열기
+     (터미널 1) cd /workspace/Project_Mood/backend && source venv/bin/activate   # 반드시 먼저
+  1. uvicorn 종료: pkill -f "uvicorn app.main:app"; pgrep -af "uvicorn app.main:app" (아무것도 안 나와야 함)
+  2. git status -> 작업 폴더가 깨끗한지 확인 (아니면 멈추고 누가 고친 건지 확인)
+  3. git fetch origin && git checkout main && git pull
+     grep -v "^torch" requirements.txt > requirements_nogpu.txt && pip install -r requirements_nogpu.txt   # venv 안에서만
+  4. .env 확인: ENABLE_DEBUG_ENDPOINTS=true 가 없으면 추가 (측정 끝나면 지우기)
+  5. uvicorn 시작 (ComfyUI가 안 떠 있으면 먼저 실행)
                 PYTHONUNBUFFERED=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee uvicorn_log.txt
-  5. (터미널 2) cd /workspace/<레포>/backend
+  6. (터미널 2) cd /workspace/Project_Mood/backend
                 source venv/bin/activate        # 터미널 2에서도 반드시 먼저
                 BENCH_USER_ID=<내 테스트 계정 id> python scripts/measure_image_prompt.py
      - 워밍업(모델 로딩)은 스크립트가 알아서 먼저 하고 측정에서 뺌. 따로 워밍업 요청 안 보내도 됨.
      - BENCH_USER_ID를 주면 마지막에 /generate-diary 전체 파이프라인도 2번(워밍업 1 + 측정 1) 돌림.
        이때 그 계정에 일기 2개 + 이미지 2장이 실제로 저장됨. 안 주면 이 단계는 건너뜀.
-  6. 결과: backend/bench_results/image_prompt_<시각>.md (사람용 요약) / .json (raw 출력 전문 포함)
+  7. 결과: backend/bench_results/image_prompt_<시각>.md (사람용 요약) / .json (raw 출력 전문 포함)
      실행 중에도 단계마다 파일을 덮어써서, 중간에 끊겨도 그때까지 결과는 남음.
      /workspace는 Stop해도 유지됨. 가져오려면: git add -f bench_results && git commit && git push
      (uvicorn_log.txt에는 raw 출력/단계별 [TIMING] 로그 전문이 남음)
-  7. 바로 Pod Stop (Terminate 금지)
+  8. 바로 Pod Stop (Terminate 금지)
 
 예상 소요: 워밍업 1~3분 + 측정 약 12~16분. --budget-min(기본 18분)을 넘기면 남은 단계는 건너뛰고 저장 후 종료.
 uvicorn에 직접 붙으므로(127.0.0.1:8000) Cloudflare 100초 제한과 무관.

@@ -92,16 +92,22 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 `pip install`도 반드시 venv가 켜진 상태에서만 할 것 (시스템 환경에 깔다가 패키지 충돌 난 적 있음). 프롬프트 앞에 `(venv)`가 보이는지 확인.
 
 ```bash
-# 0. Pod Start, 웹 터미널 2개
-# 1. (터미널 1)
-cd /workspace/<레포>/backend
+# 0. Pod Start, 웹 터미널 2개. (터미널 1)
+cd /workspace/Project_Mood/backend
 source venv/bin/activate                         # 반드시 먼저. 이후 pip/python은 전부 venv 것
-git pull
+# 1. uvicorn 종료 (떠 있으면 Ctrl+C 또는 아래), 안 떠 있는지 확인
+pkill -f "uvicorn app.main:app"; pgrep -af "uvicorn app.main:app"   # 아무것도 안 나와야 함
+# 2. 작업 폴더가 깨끗한지 확인 ("nothing to commit, working tree clean"이 아니면 멈추고 누가 고친 건지 확인)
+git status
+# 3. 코드 받기
+git fetch origin && git checkout main && git pull
 grep -v "^torch" requirements.txt > requirements_nogpu.txt && pip install -r requirements_nogpu.txt   # venv 안에서만. 컨테이너 재시작하면 패키지 초기화됨
-echo "ENABLE_DEBUG_ENDPOINTS=true" >> .env       # 측정 끝나면 지우기
-PYTHONUNBUFFERED=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee uvicorn_log.txt   # ComfyUI는 먼저 떠 있어야 함
-# 2. (터미널 2) 워밍업은 스크립트가 알아서 하고 측정에서 뺌
-cd /workspace/<레포>/backend
+# 4. .env 확인 (ENABLE_DEBUG_ENDPOINTS=true 없으면 추가, 측정 끝나면 지우기)
+grep -E "ENABLE_DEBUG_ENDPOINTS|HF_HUB_OFFLINE|HF_HOME|COMFYUI_URL" .env
+# 5. uvicorn 시작 (ComfyUI는 먼저 떠 있어야 함)
+PYTHONUNBUFFERED=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee uvicorn_log.txt
+# 6. (터미널 2) 워밍업은 스크립트가 알아서 하고 측정에서 뺌
+cd /workspace/Project_Mood/backend
 source venv/bin/activate                         # 터미널 2에서도 반드시 먼저
 BENCH_USER_ID=<테스트 계정 id> python scripts/measure_image_prompt.py
 # 3. 결과 확인/보관 후 바로 Stop
@@ -113,6 +119,47 @@ git add -f bench_results uvicorn_log.txt && git commit -m "이미지 프롬프�
 - 결과는 단계마다 `bench_results/`에 저장돼서 중간에 끊겨도 남음. `--budget-min`(기본 18분)을 넘기면 남은 조합은 건너뜀.
 - `BENCH_USER_ID`를 주면 마지막에 `/generate-diary` 전체를 2번 돌려 단계별 시간을 기록함 (그 계정에 일기 2개가 실제로 저장됨). 빼면 이 단계만 생략.
 - 일반 요청에서도 서버 로그에 `[TIMING]` 줄(단계별 시간)과 `[이미지 프롬프트 변환]` 줄(호출별 토큰 수/시간/raw 출력)이 찍힘.
+
+## 일기 LLM 측정 (속도 / 감정 진단 / 프롬프트 변형 전후, `llm-diary-diagnosis` 브랜치)
+
+서버를 재유와 같이 쓰므로 시작 전에 시간 맞추기. 예상 시간과 옵션은 `scripts/measure_diary_llm.py` 맨 위 주석 참고
+(`--image-every 3` 기준 측정 10~20분 + 재시작 3~5분, 추정치).
+
+```bash
+# 0. (터미널 1)
+cd /workspace/Project_Mood/backend
+source venv/bin/activate
+# 1. uvicorn 종료
+pkill -f "uvicorn app.main:app"; pgrep -af "uvicorn app.main:app"   # 아무것도 안 나와야 함
+# 2. 작업 폴더가 깨끗한지 확인 (아니면 멈추고 확인)
+git status
+# 3. 브랜치 받기
+git fetch origin && git checkout llm-diary-diagnosis && git pull
+# 4. .env 확인 (ENABLE_DEBUG_ENDPOINTS=true 없으면 추가)
+grep -E "ENABLE_DEBUG_ENDPOINTS|HF_HUB_OFFLINE|HF_HOME|COMFYUI_URL" .env
+# 5. uvicorn 시작 ("Application startup complete"까지 1~2분)
+PYTHONUNBUFFERED=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee uvicorn_diary_log.txt
+# 6. (터미널 2) 시작하자마자 '시작 전 점검'을 출력하고, [중단] 항목이 있으면 측정 없이 끝남
+cd /workspace/Project_Mood/backend && source venv/bin/activate
+BENCH_USER_ID=<퍼스널 검사를 한 계정 id> python scripts/measure_diary_llm.py --image-every 3
+git add -f bench_results && git commit -m "일기 LLM 측정 결과" && git push
+# 7. 되돌리기: uvicorn 종료 -> git status -> git checkout main && git pull -> .env에서 ENABLE_DEBUG_ENDPOINTS 삭제 -> uvicorn 시작
+```
+
+- 시작 전 점검: 체크아웃 브랜치/커밋, 서버가 실제로 띄운 커밋(다르면 재시작 안 한 것), ENABLE_DEBUG_ENDPOINTS, BENCH_USER_ID와 퍼스널 검사/가중치 적용 여부, ComfyUI 응답
+- `--image-every N`: 각 변형의 1, N+1, 2N+1번째 입력에서만 이미지 생성 (기본 1 = 전부, 0 = 전부 생략). job 전체 시간은 이미지를 만든 job으로만 집계
+
+### HF 모델 캐시만으로 띄우기 (HF_TOKEN이 없거나 만료됐을 때)
+
+`.env`에 아래를 넣으면 Hugging Face에 접속하지 않고 캐시에서만 읽음 (`main.py`가 맨 먼저 `load_dotenv()`를 하고
+transformers는 그 뒤에 import돼서 `.env` 값이 적용됨). 캐시에 모델이 없으면 다운로드 없이 바로 에러가 남.
+
+```
+HF_HUB_OFFLINE=1
+HF_HOME=/workspace/hf_cache        # /workspace/hf_cache 안에 hub/models--yanolja--... 가 있는 경우
+# HF_HUB_CACHE=/workspace/hf_cache # /workspace/hf_cache 바로 아래에 models--yanolja--... 가 있는 경우 (둘 중 하나만)
+```
+캐시 구조 확인: `ls /workspace/hf_cache /workspace/hf_cache/hub 2>/dev/null | grep EEVE`
 
 ## 폴더 구조
 
