@@ -2,35 +2,49 @@
 backend/scripts/measure_diary_llm.py
 일기 생성 LLM 점검용 측정 스크립트 (속도 / 감정 진단 / 프롬프트 변형 전후 비교). uvicorn이 떠 있는 서버에서 한 번 실행.
 
-[서버 작업 순서] 서버를 재유와 같이 쓰므로 시작 전에 시간 맞추기. 예상 25~40분 (아래 '예상 소요' 참고)
+[서버 작업 순서] 서버를 재유와 같이 쓰므로 시작 전에 시간 맞추기. 예상 시간은 아래 '예상 소요' 참고
   ※ 서버 파이썬 환경은 backend/venv (--system-site-packages). 터미널마다 source venv/bin/activate를 맨 먼저 하고,
     pip install은 반드시 venv 안에서만.
-  1. (터미널 1) cd /workspace/<레포>/backend
-                source venv/bin/activate
-                git fetch && git checkout llm-diary-diagnosis && git pull
-                .env에 ENABLE_DEBUG_ENDPOINTS=true 가 있는지 확인 (없으면 추가, 측정 끝나면 지우기)
-  2. (터미널 1) 기존 uvicorn 종료 후 재시작 (모델 미리 로딩 때문에 "Application startup complete"까지 1~2분)
+  0. cd /workspace/Project_Mood/backend && source venv/bin/activate
+  1. uvicorn 종료: 띄워둔 터미널에서 Ctrl+C (다른 곳에서 떠 있으면 pkill -f "uvicorn app.main:app")
+                  pgrep -af "uvicorn app.main:app"  -> 아무것도 안 나와야 함
+  2. git status  -> "nothing to commit, working tree clean"인지 확인
+                  (수정된 파일이 있으면 멈추고 누가 고친 건지 먼저 확인. 재유가 서버에서 직접 고친 걸 수 있음)
+  3. git fetch origin && git checkout llm-diary-diagnosis && git pull
+  4. .env 확인: grep -E "ENABLE_DEBUG_ENDPOINTS|HF_HUB_OFFLINE|HF_HOME|COMFYUI_URL" .env
+                ENABLE_DEBUG_ENDPOINTS=true 가 없으면 추가 (측정 끝나면 지우기)
+  5. uvicorn 시작 (모델 미리 로딩 때문에 "Application startup complete"까지 1~2분)
                 PYTHONUNBUFFERED=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee uvicorn_diary_log.txt
-  3. (터미널 2) cd /workspace/<레포>/backend && source venv/bin/activate
-                BENCH_USER_ID=<가중치 검사를 한 계정 id> python scripts/measure_diary_llm.py
-  4. 결과: bench_results/diary_llm_<시각>.md / .json (단계마다 저장되어 중간에 끊겨도 남음)
+  6. (터미널 2) cd /workspace/Project_Mood/backend && source venv/bin/activate
+                BENCH_USER_ID=<가중치 검사를 한 계정 id> python scripts/measure_diary_llm.py --image-every 3
+     -> 시작하자마자 '시작 전 점검'을 출력함. [중단] 줄이 나오면 그 안내대로 고치고 다시 실행
+  7. 결과: bench_results/diary_llm_<시각>.md / .json (단계마다 저장되어 중간에 끊겨도 남음)
      git add -f bench_results && git commit -m "일기 LLM 측정 결과" && git push
-  5. 측정 끝나면 main으로 되돌리고 재시작: git checkout main && (ENABLE_DEBUG_ENDPOINTS 지우고) uvicorn 재시작
+  8. 되돌리기: uvicorn 종료 -> git status 확인 -> git checkout main && git pull
+               -> .env에서 ENABLE_DEBUG_ENDPOINTS 삭제 -> uvicorn 시작
 
 [무엇을 재나]
   0) 워밍업 job 1개 (ComfyUI 첫 로딩 등, 집계 제외)
   1) 감정 진단: 고정 문장(감정 단어 있는/없는 쌍 포함)에 대해 KoBERT 원본 vs 가중치 적용 후 상위3 (LLM 안 씀, 수 초)
   2) base(현재 프롬프트) -> emotion_word(규칙 2번 변형) -> fewshot_no_mealtime(예시 식사시간대 제거)
      순서로 같은 입력 10개씩 job을 돌림. 변형은 한 번에 하나만 바뀜.
-     측정 job은 기본적으로 DB에 저장 안 함 (--save-db로 켤 수 있음). 이미지 생성/업로드는 실제로 함.
+     측정 job은 기본적으로 DB에 저장 안 함 (--save-db로 켤 수 있음).
+     이미지 생성/업로드는 --image-every N으로 조절: 각 변형의 1, N+1, 2N+1번째 입력에서만 생성
+     (기본 1 = 전부 생성 = 실제 앱과 같은 전체 시간. 0 = 전부 생략). 변형마다 같은 입력에서 생성하므로 비교 가능.
+     job 전체 시간(60초 목표)은 이미지를 만든 job으로만 집계하고, 일기+감정 시간은 전체 job으로 집계.
   BENCH_USER_ID 계정의 퍼스널 검사 가중치가 적용됨 (검사 안 한 계정이면 가중치 비교가 안 됨 -> 결과에 표시).
 
-예상 소요: job 1개 35~60초(추정: KV 캐시 적용 후 18tok/s 기준, 재시도 많으면 더 김) x 31개 = 18~31분
-  + 재시작/pull 3~5분. --budget-min(기본 40분)을 넘기면 남은 job은 건너뛰고 저장 후 종료.
+예상 소요 (추정: KV 캐시 적용 후 18tok/s 기준, 재시도가 많으면 더 김. 실측 아님):
+  job 1개 = 일기+감정 15~30초 + 이미지(변환+ComfyUI+업로드) 20~30초
+  --image-every 1 (기본, 31개 전부 이미지): 18~31분
+  --image-every 3 (변형마다 4개씩 이미지):   10~20분
+  --image-every 0 (이미지 없음):              8~16분
+  여기에 재시작/pull 3~5분 추가. --budget-min(기본 40분)을 넘기면 남은 job은 건너뛰고 저장 후 종료.
 옵션:
   --base-url URL       기본 http://127.0.0.1:8000 (Cloudflare 안 거침)
   --budget-min N       기본 40
   --variants a,b,c     기본 base,emotion_word,fewshot_no_mealtime
+  --image-every N      기본 1 (전부 생성). 0이면 이미지 생성/업로드 전부 생략
   --save-db            측정 job도 DB에 저장
   --emotion-file PATH  감정 진단에 추가할 문장 (한 줄에 하나, 예: 실제로 '지루한'이 나온 일기)
 """
@@ -50,6 +64,8 @@ sys.path.insert(0, str(BACKEND_DIR))
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
+
+import subprocess  # noqa: E402
 
 import httpx  # noqa: E402
 
@@ -168,8 +184,9 @@ def _avg(values):
 
 
 class Bench:
-    def __init__(self, base_url: str, budget_min: float, save_db: bool):
+    def __init__(self, base_url: str, budget_min: float, save_db: bool, image_every: int = 1):
         self.base_url = base_url.rstrip("/")
+        self.image_every = image_every
         self.budget_sec = budget_min * 60
         self.deadline = time.time() + self.budget_sec
         self.save_db = save_db
@@ -180,8 +197,8 @@ class Bench:
         out.mkdir(exist_ok=True)
         self.json_path = out / f"diary_llm_{ts}.json"
         self.md_path = out / f"diary_llm_{ts}.md"
-        self.data = {"started_at": ts, "user_id": self.user_id, "save_db": save_db,
-                     "emotion": None, "jobs": [], "skipped": []}
+        self.data = {"started_at": ts, "user_id": self.user_id, "save_db": save_db, "image_every": image_every,
+                     "preflight": None, "emotion": None, "jobs": [], "skipped": []}
 
     def time_left(self):
         return self.deadline - time.time()
@@ -190,11 +207,69 @@ class Bench:
         self.json_path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
         self.md_path.write_text(render_markdown(self.data), encoding="utf-8")
 
-    def check_debug(self):
-        r = httpx.post(f"{self.base_url}/debug/emotion", json={"texts": []}, headers=self.headers, timeout=30)
-        if r.status_code == 404:
-            sys.exit("/debug/emotion 404 -> llm-diary-diagnosis 브랜치인지, .env에 ENABLE_DEBUG_ENDPOINTS=true 넣고 재시작했는지 확인")
-        r.raise_for_status()
+    def preflight(self) -> dict:
+        """서버를 켠 직후 문제를 빨리 알기 위한 점검. 결과를 출력하고 data["preflight"]에 남김."""
+        pf = {"stop": []}
+        # 1) 이 스크립트가 있는 체크아웃의 git 상태
+        pf["local_branch"] = _git("rev-parse", "--abbrev-ref", "HEAD")
+        pf["local_commit"] = _git("log", "-1", "--format=%h %s")
+        dirty = _git("status", "--porcelain")
+        pf["local_dirty_files"] = len(dirty.splitlines()) if dirty else 0
+
+        # 2) 서버가 실제로 띄운 코드 (/debug/info: ENABLE_DEBUG_ENDPOINTS가 켜져 있어야 응답)
+        pf["env_enable_debug"] = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "(.env에 없음)")
+        info = {}
+        try:
+            r = httpx.get(f"{self.base_url}/debug/info", headers=self.headers, timeout=10)
+            pf["server_debug_endpoints"] = r.status_code == 200
+            if r.status_code == 200:
+                info = r.json()
+        except Exception as e:
+            pf["server_debug_endpoints"] = False
+            pf["stop"].append(f"서버({self.base_url}) 응답 없음: {e!r} -> uvicorn이 떠 있는지 확인")
+        pf["server_git"] = info.get("server_git")
+        pf["server_mock_mode"] = info.get("mock_mode")
+        if not pf["server_debug_endpoints"] and not pf["stop"]:
+            pf["stop"].append("/debug/info 404 -> .env에 ENABLE_DEBUG_ENDPOINTS=true 넣고 uvicorn 재시작 "
+                              "(또는 서버가 llm-diary-diagnosis 브랜치 코드로 안 떠 있음)")
+        server_commit = (pf["server_git"] or {}).get("commit")
+        if server_commit and pf["local_commit"] and not pf["local_commit"].startswith(server_commit):
+            pf["stop"].append(f"서버가 띄운 커밋({server_commit})과 지금 체크아웃({pf['local_commit'][:7]})이 다름 "
+                              "-> git pull 후 uvicorn을 재시작 안 한 것")
+        if pf["server_mock_mode"]:
+            pf["stop"].append("서버가 MOCK_MODE=true -> 실제 모델 측정이 안 됨")
+
+        # 3) BENCH_USER_ID와 퍼스널 검사
+        pf["bench_user_id"] = self.user_id or None
+        pf["personal_test_completed"] = None
+        pf["weight_profile_applied"] = None
+        if self.user_id:
+            try:
+                st = httpx.get(f"{self.base_url}/personal-test/status", headers=self.headers, timeout=10).json()
+                pf["personal_test_completed"] = st.get("completed")
+            except Exception as e:
+                pf["personal_test_completed"] = f"조회 실패: {e!r}"
+            if pf["server_debug_endpoints"]:
+                try:
+                    em = httpx.post(f"{self.base_url}/debug/emotion", json={"texts": []}, headers=self.headers,
+                                    timeout=30).json()
+                    pf["weight_profile_applied"] = em.get("weight_applied")
+                except Exception as e:
+                    pf["weight_profile_applied"] = f"조회 실패: {e!r}"
+
+        # 4) ComfyUI
+        comfy = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
+        pf["comfyui_url"] = comfy
+        try:
+            pf["comfyui_ok"] = httpx.get(f"{comfy}/system_stats", timeout=5).status_code == 200
+        except Exception:
+            pf["comfyui_ok"] = False
+        if not pf["comfyui_ok"] and self.image_every != 0:
+            pf["stop"].append(f"ComfyUI({comfy}) 응답 없음 -> ComfyUI를 먼저 켜거나, 이미지 없이 재려면 --image-every 0")
+
+        self.data["preflight"] = pf
+        print(render_preflight(pf))
+        return pf
 
     def emotion(self, texts):
         r = httpx.post(f"{self.base_url}/debug/emotion", json={"texts": texts}, headers=self.headers, timeout=120)
@@ -206,9 +281,10 @@ class Bench:
         self.save()
         return body
 
-    def job(self, variant: str, case: dict, record: bool = True):
+    def job(self, variant: str, case: dict, record: bool = True, make_image: bool = True):
         body = {k: case[k] for k in ("what", "why", "who", "when", "where")}
-        body.update(prompt_variant=None if variant == "base" else variant, save_db=self.save_db)
+        body.update(prompt_variant=None if variant == "base" else variant, save_db=self.save_db,
+                    make_image=make_image)
         t0 = time.time()
         r = httpx.post(f"{self.base_url}/debug/diary-jobs", json=body, headers=self.headers, timeout=30)
         r.raise_for_status()
@@ -222,7 +298,8 @@ class Bench:
         if record:
             self.data["jobs"].append(entry)
             self.save()
-        print(f"  [{variant}] {case['name']}: {entry.get('job_total_sec')}초, 시도 {entry.get('attempts')}회"
+        print(f"  [{variant}] {case['name']}: {entry.get('job_total_sec')}초"
+              f"{' (이미지 포함)' if entry.get('image_generated') else ' (이미지 생략)'}, 시도 {entry.get('attempts')}회"
               f"{' (폴백)' if entry.get('fallback') else ''}, 사유 {entry.get('reasons')}, "
               f"감정 {entry.get('raw_top1')} -> {entry.get('top_emotion')} ({entry.get('verdict')})")
         return entry
@@ -245,6 +322,9 @@ def summarize_job(variant: str, case_name: str, s: dict, client_sec: float) -> d
         "reasons": [reason_key(r) for d in details for r in d.get("reasons", [])],
         "diary": result.get("generated_diary"), "top_emotion": result.get("top_emotion"),
         "weight_applied": diag.get("weight_applied"),
+        "image_generated": not diag.get("image_skipped", False),
+        "diary_emotion_sec": (round(diag["diary_total_sec"] + diag["kobert_sec"], 2)
+                              if diag.get("diary_total_sec") is not None and diag.get("kobert_sec") is not None else None),
     }
     raw = diag.get("kobert_raw_scores")
     if raw and result.get("emotion_scores"):
@@ -255,18 +335,69 @@ def summarize_job(variant: str, case_name: str, s: dict, client_sec: float) -> d
     return entry
 
 
+def _git(*args):
+    try:
+        out = subprocess.run(["git", *args], cwd=BACKEND_DIR, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=10)
+        return out.stdout.strip() if out.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def image_for_index(i: int, image_every: int) -> bool:
+    """변형 안에서 i번째(0부터) 입력에 이미지를 만들지. 0이면 전부 생략, 1이면 전부 생성."""
+    return image_every > 0 and i % image_every == 0
+
+
+def _image_rule(image_every: int) -> str:
+    if image_every == 0:
+        return "전부 생략"
+    if image_every == 1:
+        return "전부 생성"
+    return f"각 변형의 1, {image_every + 1}, {2 * image_every + 1}...번째 입력에서만 생성"
+
+
+def render_preflight(pf: dict) -> str:
+    sg = pf.get("server_git") or {}
+
+    def yn(v):
+        return "O" if v is True else "X" if v is False else str(v)
+
+    lines = [
+        "===== 시작 전 점검 =====",
+        f"- 이 체크아웃: 브랜치 {pf.get('local_branch')}, 커밋 {pf.get('local_commit')}, 수정된 파일 {pf.get('local_dirty_files')}개",
+        f"- 서버가 띄운 코드: 브랜치 {sg.get('branch')}, 커밋 {sg.get('commit')}",
+        f"- ENABLE_DEBUG_ENDPOINTS: .env 값 {pf.get('env_enable_debug')}, 서버 /debug 응답 {yn(pf.get('server_debug_endpoints'))}",
+        f"- BENCH_USER_ID: {pf.get('bench_user_id') or '미설정 (user_id=0으로 실행, 가중치 비교 불가)'}"
+        + (f", 퍼스널 검사 완료 {yn(pf.get('personal_test_completed'))}, 가중치 실제 적용 {yn(pf.get('weight_profile_applied'))}"
+           if pf.get("bench_user_id") else ""),
+        f"- ComfyUI({pf.get('comfyui_url')}): 응답 {yn(pf.get('comfyui_ok'))}",
+    ]
+    lines += [f"[중단] {msg}" for msg in pf.get("stop", [])]
+    if pf.get("local_dirty_files"):
+        lines.append("[주의] 체크아웃에 수정된 파일이 있음 -> git status로 확인")
+    if pf.get("bench_user_id") and pf.get("personal_test_completed") is True and pf.get("weight_profile_applied") is False:
+        lines.append("[주의] 퍼스널 검사는 했는데 가중치 프로필이 없음 -> 가중치 비교 불가 (원본=가중치 후)")
+    return "\n".join(lines)
+
+
 def render_markdown(data: dict) -> str:
     L = [f"# 일기 LLM 측정 ({data['started_at']})", "",
          f"- BENCH_USER_ID={data['user_id']}, DB 저장={'O' if data['save_db'] else 'X (측정 job은 저장 안 함)'}",
-         f"- 목표: job 완료 {TARGET_JOB_SEC}초 이내", ""]
+         f"- 목표: job 완료 {TARGET_JOB_SEC}초 이내",
+         f"- 이미지 생성: --image-every {data.get('image_every', 1)} ({_image_rule(data.get('image_every', 1))})",
+         ""]
+    if data.get("preflight"):
+        L += ["## 0. 시작 전 점검", "", "```", render_preflight(data["preflight"]), "```", ""]
     jobs = [j for j in data["jobs"] if j.get("status") == "done"]
     variants = list(dict.fromkeys(j["variant"] for j in data["jobs"]))
 
     # 1. 전후 비교 요약
     L += ["## 1. 변형별 요약 (같은 입력, 같은 조건)", "",
-          "| 변형 | job 수 | job 시간 평균/최대(초) | 60초 초과 | 재시도 있는 job | 평균 시도 수 | 안전 템플릿 폴백 | "
+          "| 변형 | job 수 | job 전체 시간 평균/최대(초, 이미지 포함 job만) | 60초 초과 / 이미지 포함 job | "
+          "일기+감정 시간 평균/최대(초, 전체 job) | 재시도 있는 job | 평균 시도 수 | 안전 템플릿 폴백 | "
           "지어내기 적발(술/시간대/관계, 전체 시도 기준) | 뻔한 마무리 적발 | 명시적 감정 단서 있는 최종 일기 | 감정 단서와 최종 감정 일치 | 생성 tok/s |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for v in variants:
         js = [j for j in jobs if j["variant"] == v]
         if not js:
@@ -275,9 +406,12 @@ def render_markdown(data: dict) -> str:
         inv = "/".join(str(reasons.count(k)) for k in INVENTION_KEYS.values())
         with_cue = [j for j in js if j.get("cue_valence") in ("긍정감정", "부정감정")]
         match = sum(1 for j in with_cue if j.get("verdict") == "일치")
-        times = [j["job_total_sec"] for j in js]
+        times = [j["job_total_sec"] for j in js if j.get("image_generated")]
+        de = [j["diary_emotion_sec"] for j in js if j.get("diary_emotion_sec") is not None]
+        full = f"{_avg(times)} / {max(times)}" if times else "- (이미지 생성 job 없음)"
         L.append(
-            f"| {v} | {len(js)} | {_avg(times)} / {max(times)} | {sum(1 for t in times if t > TARGET_JOB_SEC)} | "
+            f"| {v} | {len(js)} | {full} | {sum(1 for t in times if t > TARGET_JOB_SEC)} / {len(times)} | "
+            f"{_avg(de)} / {max(de) if de else None} | "
             f"{sum(1 for j in js if (j['attempts'] or 0) > 1)} | {_avg([j['attempts'] for j in js])} | "
             f"{sum(1 for j in js if j['fallback'])}/{len(js)} | {inv} | {reasons.count('뻔한 마무리')} | "
             f"{len(with_cue)}/{len(js)} | {match}/{len(with_cue)} | {_avg([j['tokens_per_sec'] for j in js])} |")
@@ -286,13 +420,14 @@ def render_markdown(data: dict) -> str:
 
     # 2. 단계별 시간
     L += ["## 2. 단계별 시간 (job별)", "",
-          "| 변형 | 입력 | job 전체 | 대기 | 일기 생성 | 시도 수 | 불합격 사유 | KoBERT | 프롬프트 변환 | ComfyUI | 업로드 | tok/s |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+          "| 변형 | 입력 | 이미지 | job 전체 | 대기 | 일기 생성 | 시도 수 | 불합격 사유 | KoBERT | 프롬프트 변환 | ComfyUI | 업로드 | tok/s |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for j in data["jobs"]:
         if j.get("status") != "done":
-            L.append(f"| {j['variant']} | {j['case']} | 실패: {j.get('error')} |||||||||| ")
+            L.append(f"| {j['variant']} | {j['case']} | - | 실패: {j.get('error')} |||||||||| ")
             continue
-        L.append(f"| {j['variant']} | {j['case']} | {j['job_total_sec']} | {j['queue_wait_sec']} | {j['diary_total_sec']} | "
+        L.append(f"| {j['variant']} | {j['case']} | {'O' if j.get('image_generated') else 'X'} | {j['job_total_sec']} | "
+                 f"{j['queue_wait_sec']} | {j['diary_total_sec']} | "
                  f"{j['attempts']}{' (폴백)' if j['fallback'] else ''} | {', '.join(j['reasons']) or '-'} | {j['kobert_sec']} | "
                  f"{j['image_prompt_sec']} | {j['comfyui_sec']} | {j['upload_sec']} | {j['tokens_per_sec']} |")
     L.append("")
@@ -350,16 +485,19 @@ def main():
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--budget-min", type=float, default=40)
     parser.add_argument("--variants", default="base,emotion_word,fewshot_no_mealtime")
+    parser.add_argument("--image-every", type=int, default=1)
     parser.add_argument("--save-db", action="store_true")
     parser.add_argument("--emotion-file")
     args = parser.parse_args()
 
-    bench = Bench(args.base_url, args.budget_min, args.save_db)
+    if args.image_every < 0:
+        sys.exit("--image-every는 0 이상")
+    bench = Bench(args.base_url, args.budget_min, args.save_db, args.image_every)
     print(f"결과 파일: {bench.md_path}")
-    httpx.get(f"{bench.base_url}/", timeout=10).raise_for_status()
-    bench.check_debug()
-    if not bench.user_id:
-        print("[주의] BENCH_USER_ID 미지정 -> user_id=0으로 실행, 가중치 비교 불가")
+    pf = bench.preflight()
+    bench.save()
+    if pf["stop"]:
+        sys.exit("시작 전 점검에서 [중단] 항목이 있어 측정을 시작하지 않음")
 
     texts = list(EMOTION_TEXTS)
     if args.emotion_file:
@@ -370,16 +508,16 @@ def main():
         print(f"  {it['verdict']:<14} {_fmt_top(it['raw_top'][:3])}  ->  {_fmt_top(it['weighted_top'][:3])}  | {it['text'][:40]}")
 
     print("\n[warmup] job 1개 (집계 제외)")
-    bench.job("base", CASES[0], record=False)
+    bench.job("base", CASES[0], record=False, make_image=args.image_every != 0)
     bench.deadline = time.time() + bench.budget_sec
 
     for variant in [v.strip() for v in args.variants.split(",") if v.strip()]:
         print(f"\n[{variant}] job {len(CASES)}개")
-        for case in CASES:
+        for i, case in enumerate(CASES):
             if bench.time_left() < 90:
                 bench.data["skipped"].append(f"{variant} / {case['name']}")
                 continue
-            bench.job(variant, case)
+            bench.job(variant, case, make_image=image_for_index(i, args.image_every))
 
     bench.save()
     md = render_markdown(bench.data)

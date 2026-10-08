@@ -91,12 +91,13 @@ def _created_at_for(entry_date: Optional[date_cls]) -> Optional[str]:
 
 def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date_cls],
                   diag: Optional[dict] = None, prompt_variant: Optional[str] = None,
-                  save_db: bool = True) -> DiaryResponse:
+                  save_db: bool = True, make_image: bool = True) -> DiaryResponse:
     """
     일기 생성 -> 감정 분석 -> 가중치 -> 이미지 -> DB 저장. 동기 /generate-diary와 job 방식이 같이 씀.
     diag: dict를 넘기면 단계별 시간, 일기 시도별 기록, KoBERT 원본 점수를 채워줌 (측정용, 동작은 그대로)
     prompt_variant: 측정용 일기 프롬프트 변형. 일반 엔드포인트는 항상 None(기본 프롬프트)
     save_db: False면 DB 저장만 건너뜀 (측정 job이 사용자 보관함에 쌓이지 않게). 일반 엔드포인트는 항상 True
+    make_image: False면 이미지 생성/업로드를 건너뜀 (측정 시간 절약용). 일반 엔드포인트는 항상 True
     """
     timings = diag if diag is not None else {}
     t_start = time.time()
@@ -154,7 +155,8 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
     # SD3 이미지 생성 - 실패해도 일기 자체는 정상 응답되게 try/except로 감쌈
     image_url = None
     t = time.time()
-    if not MOCK_MODE:
+    timings["image_skipped"] = not make_image
+    if not MOCK_MODE and make_image:
         try:
             from app.services.sd3_service import generate_diary_image
             image_url = generate_diary_image(

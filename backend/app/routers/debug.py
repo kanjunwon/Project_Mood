@@ -15,6 +15,27 @@ from app.dependencies import get_current_user_id
 router = APIRouter(prefix="/debug", tags=["debug"])
 
 
+def _git(*args) -> Optional[str]:
+    import subprocess
+    from pathlib import Path
+    try:
+        out = subprocess.run(["git", *args], cwd=Path(__file__).resolve().parent, capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", timeout=5)
+        return out.stdout.strip() if out.returncode == 0 else None
+    except Exception:
+        return None
+
+
+# uvicorn이 이 코드를 읽은 시점(=서버 시작 시점)의 커밋. 체크아웃만 하고 재시작을 안 했는지 확인용
+_SERVER_GIT = {"branch": _git("rev-parse", "--abbrev-ref", "HEAD"), "commit": _git("rev-parse", "--short", "HEAD")}
+
+
+@router.get("/info")
+def debug_info(user_id: int = Depends(get_current_user_id)):
+    from app.services.llama_service import MOCK_MODE
+    return {"server_git": _SERVER_GIT, "mock_mode": MOCK_MODE, "debug_endpoints": True}
+
+
 class ImagePromptDebugRequest(BaseModel):
     diary_text: str
     who: Union[str, List[str]] = ""
@@ -93,6 +114,7 @@ class DiaryDebugJobRequest(BaseModel):
     date: Optional[str] = None
     prompt_variant: Optional[str] = None  # llama_service.PROMPT_VARIANTS 키. None이면 기본 프롬프트
     save_db: bool = False  # 기본은 저장 안 함 (측정 job이 보관함에 쌓이지 않게)
+    make_image: bool = True  # False면 이미지 생성/업로드 생략 (일기/감정 단계만 측정)
 
 
 @router.post("/diary-jobs", status_code=202)
@@ -127,7 +149,8 @@ def create_debug_diary_job(request: DiaryDebugJobRequest, background_tasks: Back
                 diag["lock_acquired_at"] = time.time()
                 result = diary_router._run_pipeline(diary_request, user_id, entry_date, diag=diag,
                                                     prompt_variant=request.prompt_variant,
-                                                    save_db=request.save_db)
+                                                    save_db=request.save_db,
+                                                    make_image=request.make_image)
             update = {"status": "done", "result": result, "error": None}
         except HTTPException as e:
             update = {"status": "error", "result": None, "error": str(e.detail)}

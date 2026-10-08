@@ -62,8 +62,8 @@ def test_summarize_and_render():
     s2["job_total_sec"] = 70.0
     md = m.render_markdown({"started_at": "t", "user_id": 1, "save_db": False, "emotion": None,
                             "jobs": [s1, s2], "skipped": []})
-    assert "| base | 1 | 45.0 / 45.0 | 0 | 1 | 2 | 0/1 | 0/1/0 | 0 | 1/1 | 0/1 | 18.0 |" in md
-    assert "| emotion_word | 1 | 70.0 / 70.0 | 1 | 0 | 1 | 0/1 | 0/0/0 | 0 | 1/1 | 1/1 | 18.0 |" in md
+    assert "| base | 1 | 45.0 / 45.0 | 0 / 1 | 20.2 / 20.2 | 1 | 2 | 0/1 | 0/1/0 | 0 | 1/1 | 0/1 | 18.0 |" in md
+    assert "| emotion_word | 1 | 70.0 / 70.0 | 1 / 1 | 20.2 / 20.2 | 0 | 1 | 0/1 | 0/0/0 | 0 | 1/1 | 1/1 | 18.0 |" in md
     assert "| 식사시간대 지어냄 | 1 | 0 |" in md
     assert "가중치가 뒤집음 | 1 |" in md
 
@@ -128,3 +128,60 @@ def test_regular_endpoints_still_save(monkeypatch):
     r = c.post("/generate-diary", json={"what": "x", "why": "y", "who": "혼자", "when": "10월 2일 목요일 오후 6시", "where": "집"},
                headers={"Authorization": f"Bearer {create_access_token(user_id=7)}"})
     assert r.status_code == 200 and len(saved) == 1
+
+
+# ---------- 이미지 생성 옵션 ----------
+
+def test_image_for_index():
+    assert [m.image_for_index(i, 1) for i in range(4)] == [True, True, True, True]  # 기본: 전부
+    assert [m.image_for_index(i, 0) for i in range(4)] == [False] * 4
+    assert [i for i in range(10) if m.image_for_index(i, 3)] == [0, 3, 6, 9]
+
+
+def test_summary_counts_full_time_only_for_image_jobs():
+    raw = {"즐거운": 0.6, "지루한": 0.4}
+    st = _fake_status([[]], raw=raw, weighted=raw)
+    st["diag"]["image_skipped"] = True
+    j = m.summarize_job("base", "노래방", st, 30.0)
+    assert j["image_generated"] is False and j["diary_emotion_sec"] == 20.2
+    md = m.render_markdown({"started_at": "t", "user_id": 1, "save_db": False, "image_every": 0,
+                            "emotion": None, "jobs": [j], "skipped": []})
+    assert "| base | 1 | - (이미지 생성 job 없음) | 0 / 0 | 20.2 / 20.2 |" in md
+    assert "--image-every 0 (전부 생략)" in md
+
+
+def test_render_preflight():
+    pf = {"stop": ["ComfyUI 응답 없음"], "local_branch": "llm-diary-diagnosis", "local_commit": "abc1234 msg",
+          "local_dirty_files": 0, "server_git": {"branch": "llm-diary-diagnosis", "commit": "abc1234"},
+          "env_enable_debug": "true", "server_debug_endpoints": True, "bench_user_id": 3,
+          "personal_test_completed": True, "weight_profile_applied": False,
+          "comfyui_url": "http://127.0.0.1:8188", "comfyui_ok": False}
+    out = m.render_preflight(pf)
+    assert "브랜치 llm-diary-diagnosis, 커밋 abc1234 msg" in out
+    assert "서버 /debug 응답 O" in out and "퍼스널 검사 완료 O, 가중치 실제 적용 X" in out
+    assert "ComfyUI(http://127.0.0.1:8188): 응답 X" in out
+    assert "[중단] ComfyUI 응답 없음" in out and "가중치 프로필이 없음" in out
+
+
+def test_debug_job_make_image_false_skips_image(client, monkeypatch):
+    from app.routers import diary as diary_router
+    from app.services import sd3_service
+    calls = []
+    monkeypatch.setattr(diary_router, "MOCK_MODE", False)  # 이미지 단계까지 가게 (LLM/KoBERT는 mock 그대로)
+    monkeypatch.setattr(sd3_service, "generate_diary_image", lambda **kw: calls.append(kw) or "http://img")
+    base = {"what": "x", "why": "y", "who": "혼자", "when": "10월 2일 목요일 오후 6시", "where": "집"}
+
+    job_id = client.post("/debug/diary-jobs", json={**base, "make_image": False}).json()["job_id"]
+    s = client.get(f"/debug/diary-jobs/{job_id}").json()
+    assert s["status"] == "done" and s["diag"]["image_skipped"] is True and calls == []
+    assert s["result"]["image_url"] is None
+
+    job_id = client.post("/debug/diary-jobs", json=base).json()["job_id"]  # 기본값 = 이미지 생성
+    s = client.get(f"/debug/diary-jobs/{job_id}").json()
+    assert s["diag"]["image_skipped"] is False and len(calls) == 1 and s["result"]["image_url"] == "http://img"
+
+
+def test_debug_info(client):
+    r = client.get("/debug/info")
+    assert r.status_code == 200
+    assert set(r.json()["server_git"]) == {"branch", "commit"} and r.json()["mock_mode"] is True
