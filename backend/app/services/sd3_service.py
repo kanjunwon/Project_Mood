@@ -8,6 +8,7 @@ app/services/sd3_service.py
 ComfyUI API(/prompt, /history, /view)를 호출해 이미지를 만들고,
 결과를 Supabase Storage에 업로드한 뒤 공개 URL을 반환한다.
 """
+import re
 import time
 import uuid
 
@@ -73,6 +74,51 @@ def _avatar_tags(glasses: str, bangs: bool, hair_length: str, hair_color: str) -
     return ", ".join(tags)
 
 
+# --- 성별 반영 (2026-10 추가) ---
+# 이미지 프롬프트 변환 LLM(llm 모드)은 계정 성별을 전혀 모르고, 예시도 전부 1girl이라 기본이 여성으로 나옴.
+# LLM 출력 규칙(SYSTEM_PROMPT 해시 고정)은 건드리지 않고, 변환 결과를 여기서 결정론적으로 보정한다.
+_MALE_SWAP = {
+    "1girl": "1boy",
+    "young adult woman": "young adult man",
+    "woman": "man",
+    "girl": "boy",
+    "female focus": "male focus",
+}
+_MALE_EXTRA_NEGATIVE = "1girl, girl, female"
+_PERSON_TAG = re.compile(r"^(\d+)(girl|girls|boy|boys)$")
+
+
+def normalize_gender(gender) -> str | None:
+    """DB의 users.gender 텍스트("남성"/"여성"/...) -> "male" | "female" | None"""
+    if not gender:
+        return None
+    s = str(gender).strip().lower()
+    if "여" in s or s.startswith("f") or "woman" in s or "girl" in s:
+        return "female"
+    if "남" in s or s.startswith("m") or "man" in s or "boy" in s:
+        return "male"
+    return None
+
+
+def apply_gender(positive: str, negative: str, gender) -> tuple[str, str]:
+    """
+    계정 성별이 남성이고 프롬프트가 '혼자 나오는 1인' 구도일 때만 1girl -> 1boy 등으로 바꾼다.
+    - 인원 태그가 정확히 1개(1girl 또는 1boy)일 때만 동작 -> 커플/친구들("2girls, 1boy" 등)은 건드리지 않음
+    - 여성/미입력/기타는 변경 없음 (기본값이 이미 여성형이라)
+    """
+    if normalize_gender(gender) != "male":
+        return positive, negative
+    tags = [t.strip() for t in positive.split(",") if t.strip()]
+    person_tags = [t for t in tags if _PERSON_TAG.match(t)]
+    if person_tags != ["1girl"] and person_tags != ["1boy"]:
+        return positive, negative
+    swapped = [_MALE_SWAP.get(t, t) for t in tags]
+    if "1boy" not in swapped:
+        swapped.insert(0, "1boy")
+    new_negative = f"{negative}, {_MALE_EXTRA_NEGATIVE}" if negative else _MALE_EXTRA_NEGATIVE
+    return ", ".join(swapped), new_negative
+
+
 def _submit_workflow(positive_prompt: str, negative_prompt: str) -> str:
     workflow = load_workflow_template()
     workflow[POSITIVE_PROMPT_NODE_ID]["inputs"]["text"] = positive_prompt
@@ -132,7 +178,7 @@ def generate_diary_image(
     """
     일기 텍스트 + 대표 감정 + Who/Where/When + 아바타 속성(안경/앞머리/머리길이/머리색) -> 그림일기 이미지 URL.
     glasses: "horn_rimmed" | "round" | "none"
-    gender: 계정 성별. IMAGE_PROMPT_MODE=template일 때만 쓰임 (llm 모드는 기존과 동일하게 안 씀)
+    gender: 계정 성별("남성"/"여성"). template 모드는 프롬프트 생성에, 공통으로 apply_gender()가 1인 구도 성별 태그를 보정
     timings: dict를 넘기면 단계별 소요시간(초)을 채워줌 (측정용)
     """
     if timings is None:
@@ -142,8 +188,10 @@ def generate_diary_image(
     prompt_result = translate_to_image_prompt(
         diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when, gender=gender
     )
-    positive = f"{prompt_result['positive']}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
+    positive_body = prompt_result["positive"]
     negative = prompt_result.get("negative") or FALLBACK_NEGATIVE_PROMPT
+    positive_body, negative = apply_gender(positive_body, negative, gender)
+    positive = f"{positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
     t1 = time.time()
     timings["image_prompt_sec"] = round(t1 - t0, 2)
 
