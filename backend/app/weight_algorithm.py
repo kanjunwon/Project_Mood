@@ -93,4 +93,11 @@ def apply_weight(emotion_scores: Dict[str, float], weight_vector: Dict[str, floa
     if total <= 0:
         return emotion_scores  # 방어적 처리 - 전부 0이면 원본 그대로
 
-    return {emotion: value / total for emotion, value in weighted.items()}
+    result = {emotion: value / total for emotion, value in weighted.items()}
+
+    # 진단용 로그: KoBERT 원본 상위3 vs 가중치 적용 후 상위3 (감정이 이상하게 나왔을 때 어디서 뒤집혔는지 확인)
+    def _top3(d):
+        return ", ".join(f"{e} {v:.2f}" for e, v in sorted(d.items(), key=lambda x: -x[1])[:3])
+    print(f"  [감정] KoBERT 원본 상위3: {_top3(emotion_scores)}")
+    print(f"  [감정] 가중치 적용 후 상위3: {_top3(result)} (배수 범위 {min(weight_vector.values()):.2f}~{max(weight_vector.values()):.2f})")
+    return result
