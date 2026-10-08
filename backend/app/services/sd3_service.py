@@ -84,7 +84,10 @@ _MALE_SWAP = {
     "girl": "boy",
     "female focus": "male focus",
 }
-_MALE_EXTRA_NEGATIVE = "1girl, girl, female"
+# 모델/LoRA가 여성 쪽으로 쏠려 있어서, 남성일 때는 가중치 문법 (태그:1.3)으로 강하게 지정한다.
+# (ComfyUI CLIPTextEncode가 지원하는 문법)
+_MALE_POSITIVE_PREFIX = "(1boy:1.3), (male focus:1.2)"
+_MALE_EXTRA_NEGATIVE = "(1girl:1.3), (girl:1.2), (female:1.2), feminine"
 _PERSON_TAG = re.compile(r"^(\d+)(girl|girls|boy|boys)$")
 
 
@@ -112,11 +115,10 @@ def apply_gender(positive: str, negative: str, gender) -> tuple[str, str]:
     person_tags = [t for t in tags if _PERSON_TAG.match(t)]
     if person_tags != ["1girl"] and person_tags != ["1boy"]:
         return positive, negative
-    swapped = [_MALE_SWAP.get(t, t) for t in tags]
-    if "1boy" not in swapped:
-        swapped.insert(0, "1boy")
+    swapped = [t for t in (_MALE_SWAP.get(t, t) for t in tags) if t not in ("1boy", "male focus")]
+    new_positive = ", ".join([_MALE_POSITIVE_PREFIX] + swapped)
     new_negative = f"{negative}, {_MALE_EXTRA_NEGATIVE}" if negative else _MALE_EXTRA_NEGATIVE
-    return ", ".join(swapped), new_negative
+    return new_positive, new_negative
 
 
 def _submit_workflow(positive_prompt: str, negative_prompt: str) -> str:
@@ -190,8 +192,15 @@ def generate_diary_image(
     )
     positive_body = prompt_result["positive"]
     negative = prompt_result.get("negative") or FALLBACK_NEGATIVE_PROMPT
+    positive_body_before = positive_body
     positive_body, negative = apply_gender(positive_body, negative, gender)
     positive = f"{positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
+    print(
+        f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "
+        f"보정 {'적용됨' if positive_body != positive_body_before else '없음(1인 구도 아니거나 남성이 아님)'}"
+    )
+    print(f"  [최종 positive] {positive}")
+    print(f"  [최종 negative] {negative}")
     t1 = time.time()
     timings["image_prompt_sec"] = round(t1 - t0, 2)
 

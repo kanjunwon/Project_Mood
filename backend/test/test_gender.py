@@ -21,13 +21,14 @@ def test_normalize_gender():
 def test_male_solo_girl_is_swapped_to_boy():
     pos, neg = apply_gender("1girl, young adult woman, solo, cafe, gamjeong style", NEG, "남성")
     assert "1girl" not in pos and "young adult woman" not in pos
-    assert pos.startswith("1boy, young adult man, solo")
-    assert "1girl" in neg and neg.startswith(NEG)
+    assert pos.startswith("(1boy:1.3), (male focus:1.2), young adult man, solo")
+    assert "(1girl:1.3)" in neg and neg.startswith(NEG)
 
 
-def test_male_already_boy_is_unchanged_in_positive():
+def test_male_already_boy_gets_emphasis_without_duplicates():
     pos, _ = apply_gender("1boy, solo, park, gamjeong style", NEG, "남성")
-    assert pos == "1boy, solo, park, gamjeong style"
+    assert pos == "(1boy:1.3), (male focus:1.2), solo, park, gamjeong style"
+    assert pos.count("1boy") == 1
 
 
 def test_female_and_unknown_gender_untouched():
