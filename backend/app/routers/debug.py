@@ -7,7 +7,7 @@ DB에는 아무것도 저장하지 않음. 그래도 LLM을 돌리는 엔드포�
 """
 from typing import Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.dependencies import get_current_user_id
@@ -82,6 +82,120 @@ def debug_image_prompt(request: ImagePromptDebugRequest, user_id: int = Depends(
     report["positive"] = result["positive"]
     report["negative"] = result["negative"]
     return report
+
+
+class DiaryDebugJobRequest(BaseModel):
+    what: str
+    why: str
+    who: Union[str, List[str]]
+    when: str
+    where: str
+    date: Optional[str] = None
+    prompt_variant: Optional[str] = None  # llama_service.PROMPT_VARIANTS 키. None이면 기본 프롬프트
+    save_db: bool = False  # 기본은 저장 안 함 (측정 job이 보관함에 쌓이지 않게)
+
+
+@router.post("/diary-jobs", status_code=202)
+def create_debug_diary_job(request: DiaryDebugJobRequest, background_tasks: BackgroundTasks,
+                           user_id: int = Depends(get_current_user_id)):
+    """
+    /generate-diary/jobs와 같은 job 흐름(같은 파이프라인 락, 같은 job 보관소)으로 돌리되,
+    프롬프트 변형/DB 저장 여부를 고를 수 있고 결과에 diag(단계별 시간, 시도별 기록, KoBERT 원본 점수)가 붙음.
+    """
+    import time
+    import uuid
+    from app.routers import diary as diary_router
+    from app.schemas.diary import DiaryRequest
+    from app.services.llama_service import PROMPT_VARIANTS
+
+    if request.prompt_variant and request.prompt_variant not in PROMPT_VARIANTS:
+        raise HTTPException(status_code=400, detail=f"prompt_variant는 {list(PROMPT_VARIANTS)} 중 하나")
+    diary_request = DiaryRequest(what=request.what, why=request.why, who=request.who,
+                                 when=request.when, where=request.where, date=request.date)
+    entry_date = diary_router._resolve_entry_date(diary_request.date, diary_request.when)
+
+    job_id = uuid.uuid4().hex
+    created = time.time()
+    with diary_router._JOBS_LOCK:
+        diary_router._JOBS[job_id] = {"user_id": user_id, "created": created, "status": "processing",
+                                      "result": None, "error": None, "diag": {}}
+
+    def worker():
+        diag = diary_router._JOBS[job_id]["diag"]
+        try:
+            with diary_router._PIPELINE_LOCK:
+                diag["lock_acquired_at"] = time.time()
+                result = diary_router._run_pipeline(diary_request, user_id, entry_date, diag=diag,
+                                                    prompt_variant=request.prompt_variant,
+                                                    save_db=request.save_db)
+            update = {"status": "done", "result": result, "error": None}
+        except HTTPException as e:
+            update = {"status": "error", "result": None, "error": str(e.detail)}
+        except Exception as e:
+            update = {"status": "error", "result": None, "error": repr(e)}
+        diag["finished_at"] = time.time()
+        with diary_router._JOBS_LOCK:
+            diary_router._JOBS[job_id].update(update)
+
+    background_tasks.add_task(worker)
+    return {"job_id": job_id, "status": "processing"}
+
+
+@router.get("/diary-jobs/{job_id}")
+def get_debug_diary_job(job_id: str, user_id: int = Depends(get_current_user_id)):
+    from app.routers import diary as diary_router
+
+    with diary_router._JOBS_LOCK:
+        job = diary_router._JOBS.get(job_id)
+        snapshot = dict(job) if job else None
+    if snapshot is None or snapshot["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="job 없음")
+    diag = dict(snapshot.get("diag") or {})
+    if "lock_acquired_at" in diag:
+        diag["queue_wait_sec"] = round(diag["lock_acquired_at"] - snapshot["created"], 2)
+    if "finished_at" in diag:
+        diag["job_total_sec"] = round(diag["finished_at"] - snapshot["created"], 2)
+    result = snapshot["result"]
+    return {"job_id": job_id, "status": snapshot["status"], "error": snapshot["error"],
+            "result": result.model_dump() if result is not None else None, "diag": diag}
+
+
+class EmotionDebugRequest(BaseModel):
+    texts: List[str]
+
+
+@router.post("/emotion")
+def debug_emotion(request: EmotionDebugRequest, user_id: int = Depends(get_current_user_id)):
+    """
+    같은 일기 문장에 대해 KoBERT 원본 확률과 (요청한 사용자의) 가중치 적용 후 확률을 나란히 돌려줌.
+    LLM은 안 씀. 가중치 프로필이 없으면 weight_applied=False이고 weighted는 원본과 같음.
+    """
+    from app.services.kobert_service import analyze_emotion
+    from app.repositories.personal_test_repository import get_latest_weight_profile
+    from app.weight_algorithm import apply_weight
+
+    weights = None
+    try:
+        profile = get_latest_weight_profile(str(user_id))
+        weights = profile.get("weights") if profile else None
+    except Exception as e:
+        print(f"[debug/emotion] 가중치 프로필 조회 실패: {e!r}")
+
+    def top(d, n=5):
+        return [[e, round(v, 4)] for e, v in sorted(d.items(), key=lambda x: -x[1])[:n]]
+
+    items = []
+    for text in request.texts:
+        raw = analyze_emotion(text)["scores"] or {}
+        weighted = apply_weight(raw, weights) if (weights and raw) else dict(raw)
+        items.append({
+            "text": text,
+            "raw_top": top(raw),
+            "weighted_top": top(weighted),
+            "weights_of_top": {e: round(weights.get(e, 1.0), 3) for e, _ in top(raw, 3) + top(weighted, 3)}
+            if weights else None,
+        })
+    return {"weight_applied": bool(weights), "items": items}
 
 
 @router.get("/last-pipeline-timings")

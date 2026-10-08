@@ -90,11 +90,13 @@ def _created_at_for(entry_date: Optional[date_cls]) -> Optional[str]:
 
 
 def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date_cls],
-                  diag: Optional[dict] = None, prompt_variant: Optional[str] = None) -> DiaryResponse:
+                  diag: Optional[dict] = None, prompt_variant: Optional[str] = None,
+                  save_db: bool = True) -> DiaryResponse:
     """
     일기 생성 -> 감정 분석 -> 가중치 -> 이미지 -> DB 저장. 동기 /generate-diary와 job 방식이 같이 씀.
     diag: dict를 넘기면 단계별 시간, 일기 시도별 기록, KoBERT 원본 점수를 채워줌 (측정용, 동작은 그대로)
     prompt_variant: 측정용 일기 프롬프트 변형. 일반 엔드포인트는 항상 None(기본 프롬프트)
+    save_db: False면 DB 저장만 건너뜀 (측정 job이 사용자 보관함에 쌓이지 않게). 일반 엔드포인트는 항상 True
     """
     timings = diag if diag is not None else {}
     t_start = time.time()
@@ -192,7 +194,7 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
         created_at = _created_at_for(entry_date)
         if created_at:
             row["created_at"] = created_at
-        saved = save_diary(row)
+        saved = save_diary(row) if save_db else None
         if saved:
             saved_id = saved[0].get("id")
     except Exception as e:
