@@ -11,8 +11,8 @@
   "3": {
     "inputs": {
       "lora_name": "gamjeong_illustrious_v1.safetensors",
-      "strength_model": 1,
-      "strength_clip": 1,
+      "strength_model": 0.8,
+      "strength_clip": 0.8,
       "model": [
         "1",
         0
@@ -31,8 +31,8 @@
     "inputs": {
       "text": "2boys, brothers, young adult men, furniture store, showroom, shopping, lamp, home decor, casual clothes, daylight, gamjeong style",
       "clip": [
-        "3",
-        1
+        "12",
+        0
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -44,8 +44,8 @@
     "inputs": {
       "text": "bad anatomy, extra limbs, missing limbs, deformed arm, malformed hands, extra fingers, missing fingers, fused fingers, mutated hands, disfigured, distorted, blurry, low quality, photorealistic, realistic, photo, 3d render, text, watermark, gibberish text, chinese text, chinese characters, kanji, hanzi, hanja",
       "clip": [
-        "3",
-        1
+        "12",
+        0
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -67,9 +67,9 @@
   "8": {
     "inputs": {
       "seed": 950628752180537,
-      "steps": 30,
-      "cfg": 7,
-      "sampler_name": "euler",
+      "steps": 26,
+      "cfg": 5.5,
+      "sampler_name": "euler_ancestral",
       "scheduler": "normal",
       "denoise": 1,
       "model": [
@@ -121,6 +121,19 @@
     "class_type": "SaveImage",
     "_meta": {
       "title": "이미지 저장"
+    }
+  },
+  "12": {
+    "inputs": {
+      "stop_at_clip_layer": -2,
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "class_type": "CLIPSetLastLayer",
+    "_meta": {
+      "title": "CLIP 마지막 레이어 설정 (Clip Skip 2)"
     }
   }
 }

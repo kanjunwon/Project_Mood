@@ -15,6 +15,7 @@ import uuid
 import requests
 
 from app.models.sd3_loader import COMFYUI_URL, load_workflow_template
+from app.services.cast import build_cast, strip_person_tags
 from app.services.image_prompt_service import translate_to_image_prompt
 from app.database import supabase
 
@@ -157,6 +158,97 @@ def ensure_solo_person(positive: str, negative: str, who, gender) -> tuple[str, 
     return ", ".join(lead + tags), new_negative
 
 
+# --- 이미지 품질 보정 (2026-10-09 ComfyUI 시드 고정 비교 테스트 결과 반영) ---
+# Illustrious는 품질 태그를 맨 앞에 두는 게 권장됨. LLM이 이미 같은 태그를 넣었으면 중복 제거.
+QUALITY_PREFIX = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+_QUALITY_TAGS = {t.strip() for t in QUALITY_PREFIX.split(",")}
+
+# negative는 길게 쌓지 않고 핵심만 쓴다 (긴 목록 vs 짧은 목록을 같은 시드로 비교했을 때 차이가 없었음).
+# 이미지 프롬프트 LLM이 내놓는 negative(고정 긴 문자열)는 쓰지 않고 이걸로 대체한다.
+# 인원/성별 negative(girl 계열 등)는 계정/구도에 따라 아래 보정 함수들이 따로 덧붙임.
+IMAGE_NEGATIVE_BASE = (
+    "(text:1.3), (signboard:1.3), (letters:1.2), keyboard, monitor, "
+    "worst quality, low quality, bad anatomy, bad hands, extra fingers, blurry, watermark, extra people"
+)
+
+# 간판/글자를 부르는 태그: neon 계열은 "간판"이 그려지며 글자가 깨짐 -> 분위기만 남기고 대체, 나머지 글자 계열은 제거.
+_NEON_TAG = re.compile(r"\bneon\b", re.IGNORECASE)
+_TEXT_PRONE_TAG = re.compile(
+    r"\b(signs?|signboard|signage|billboard|banner|poster|text|letters?|lettering|logo|lyrics|subtitles?)\b",
+    re.IGNORECASE,
+)
+# "coin karaoke room"/"karaoke booth"는 발표실/PC방/스튜디오로 그려지는 경우가 있어 "karaoke room"으로 통일
+_PLACE_REPLACE = {
+    "coin karaoke room": "karaoke room",
+    "coin karaoke booth": "karaoke room",
+    "coin karaoke": "karaoke room",
+    "karaoke booth": "karaoke room",
+    "karaoke box": "karaoke room",
+}
+_GROUP_BOYS_TAG = re.compile(r"^(\d+)boys$")
+_MALE_GROUP_NEGATIVE = "girl, 1girl, 2girls, 3girls"
+
+
+def sanitize_image_tags(positive: str) -> tuple[str, list[str]]:
+    """
+    이미지 프롬프트 LLM이 만든 positive에서 글자/간판을 부르는 태그를 정리한다.
+    - neon 포함 태그 -> "colorful lighting" (분위기는 유지)
+    - sign/text/letters/logo 등 글자 계열 태그 -> 제거
+    - 장소 태그 통일, 품질 태그 중복/태그 중복 제거
+    반환: (정리된 positive, 바뀐 내용 목록 - 로그용)
+    """
+    changes: list[str] = []
+    out: list[str] = []
+    seen: set[str] = set()
+    for tag in (t.strip() for t in positive.split(",")):
+        if not tag:
+            continue
+        low = tag.lower()
+        if low in _QUALITY_TAGS:
+            changes.append(f"-{tag}(품질 태그 중복)")
+            continue
+        if low in _PLACE_REPLACE:
+            new = _PLACE_REPLACE[low]
+            changes.append(f"{tag}->{new}")
+            tag, low = new, new
+        elif _NEON_TAG.search(low):
+            changes.append(f"{tag}->colorful lighting")
+            tag, low = "colorful lighting", "colorful lighting"
+        elif _TEXT_PRONE_TAG.search(low):
+            changes.append(f"-{tag}")
+            continue
+        if low in seen:
+            continue
+        seen.add(low)
+        out.append(tag)
+    return ", ".join(out), changes
+
+
+def ensure_male_group(positive: str, negative: str, gender) -> tuple[str, str]:
+    """
+    남성 계정이고 LLM이 '남자만 N명(2boys, 3boys ...)'으로 만들었을 때, 여성이 섞여 그려지는 걸 줄인다.
+    - 인원 태그가 정확히 하나(Nboys, N>=2)이고 여성 관련 태그가 없을 때만 동작
+      (엄마/누나가 포함된 구성, 커플 등은 건드리지 않음 / 여성 계정도 본인이 여성일 수 있으니 건드리지 않음)
+    - (Nboys:1.2) 가중치 + male focus + negative에 girl 계열 추가
+    """
+    if normalize_gender(gender) != "male":
+        return positive, negative
+    tags = [t.strip() for t in positive.split(",") if t.strip()]
+    person_tags = [t for t in tags if _PERSON_TAG.match(t)]
+    if len(person_tags) != 1 or not _GROUP_BOYS_TAG.match(person_tags[0]):
+        return positive, negative
+    if int(_GROUP_BOYS_TAG.match(person_tags[0]).group(1)) < 2:
+        return positive, negative
+    if any(w in t.lower() for t in tags for w in ("girl", "woman", "female", "mother", "mom", "sister")):
+        return positive, negative
+    idx = tags.index(person_tags[0])
+    tags[idx] = f"({person_tags[0]}:1.2)"
+    if "male focus" not in tags:
+        tags.insert(idx + 1, "male focus")
+    new_negative = f"{negative}, {_MALE_GROUP_NEGATIVE}" if negative else _MALE_GROUP_NEGATIVE
+    return ", ".join(tags), new_negative
+
+
 def _submit_workflow(positive_prompt: str, negative_prompt: str) -> str:
     workflow = load_workflow_template()
     workflow[POSITIVE_PROMPT_NODE_ID]["inputs"]["text"] = positive_prompt
@@ -226,15 +318,31 @@ def generate_diary_image(
     prompt_result = translate_to_image_prompt(
         diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when, gender=gender
     )
-    positive_body = prompt_result["positive"]
-    negative = prompt_result.get("negative") or FALLBACK_NEGATIVE_PROMPT
+    # 글자/간판을 부르는 태그 정리 + negative는 LLM이 준 긴 문자열 대신 핵심만 쓰는 고정값 사용
+    positive_body, tag_changes = sanitize_image_tags(prompt_result["positive"])
+    negative = IMAGE_NEGATIVE_BASE
     positive_body_before = positive_body
-    positive_body, negative = ensure_solo_person(positive_body, negative, who, gender)
-    positive_body, negative = apply_gender(positive_body, negative, gender)
-    positive = f"{positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
+    # 인원/성별은 앱 입력(Who)과 계정 성별로 서버가 확정한다 ("나"는 항상 포함). 판단 불가면 예전 보정 체인 사용.
+    cast = build_cast(who, gender)
+    if cast is not None:
+        rest = strip_person_tags(positive_body)
+        positive_body = ", ".join(cast.tags + ([rest] if rest else []))
+        if cast.negative:
+            negative = f"{negative}, {cast.negative}"
+        positive_body_gender = positive_body
+        print(f"  [인원 구성] {cast.summary}")
+    else:
+        print("  [인원 구성] 판단 불가 -> LLM 인원 태그 + 기존 보정 사용")
+        positive_body, negative = ensure_solo_person(positive_body, negative, who, gender)
+        positive_body, negative = apply_gender(positive_body, negative, gender)
+        positive_body_gender = positive_body
+        positive_body, negative = ensure_male_group(positive_body, negative, gender)
+    positive = f"{QUALITY_PREFIX}, {positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
+    print(f"  [태그 정리] {', '.join(tag_changes) if tag_changes else '변경 없음'}")
     print(
         f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "
-        f"who={who!r}, 보정 {'적용됨' if positive_body != positive_body_before else '없음'}"
+        f"who={who!r}, 보정 {'적용됨' if positive_body_gender != positive_body_before else '없음'}, "
+        f"남성 그룹 보정 {'적용됨' if positive_body != positive_body_gender else '없음'}"
     )
     print(f"  [최종 positive] {positive}")
     print(f"  [최종 negative] {negative}")
