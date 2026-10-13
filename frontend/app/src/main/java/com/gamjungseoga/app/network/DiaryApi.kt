@@ -2,6 +2,7 @@ package com.gamjungseoga.app.network
 
 import com.google.gson.annotations.SerializedName
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -19,6 +20,9 @@ interface DiaryApi {
 
     @GET("diaries/me")
     suspend fun getDiaries(): DiaryListResponse
+
+    @DELETE("diaries/{id}")
+    suspend fun deleteDiary(@Path("id") diaryId: Long): DiaryDeleteResponse
 }
 
 data class DiaryGenerateRequest(
@@ -29,7 +33,10 @@ data class DiaryGenerateRequest(
     val where: String,
     // 서버가 날짜를 우선적으로 이 필드에서 읽고, whenText(자유 형식 문장)의 날짜 파싱은 보조
     // 수단으로만 쓴다. "YYYY-MM-DD" 형식.
-    val date: String
+    val date: String,
+    // true면 같은 날짜에 이미 일기가 있어도(하루 1개 제한) 새로 생성한 뒤 기존 일기를 덮어쓴다.
+    // "다시 작성하기" 플로우에서만 true로 보내고, 평소에는 false(기본값).
+    val overwrite: Boolean = false
 )
 
 data class DiaryJobCreated(
@@ -41,7 +48,15 @@ data class DiaryJobStatus(
     @SerializedName("job_id") val jobId: String,
     val status: String, // processing | done | error
     val result: DiaryGenerateResponse? = null,
-    val error: String? = null
+    val error: String? = null,
+    // "DIARY_ALREADY_EXISTS"면 같은 날짜 일기가 동시에 두 개 생성 요청된 경쟁 상태(하루 1개
+    // 제한 위반)로 실패한 경우. 그 외 에러는 null.
+    @SerializedName("error_code") val errorCode: String? = null
+)
+
+data class DiaryDeleteResponse(
+    val status: String,
+    @SerializedName("deleted_id") val deletedId: Long
 )
 
 data class DiaryGenerateResponse(

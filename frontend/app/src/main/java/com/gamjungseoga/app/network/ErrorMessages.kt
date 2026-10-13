@@ -21,12 +21,46 @@ private fun sanitizeRawBody(rawBody: String?): String? {
     return trimmed
 }
 
-// FastAPI가 HTTPException(detail=...)로 내려주는 형태({"detail": "..."})에서 메시지만 뽑아낸다.
+// FastAPI가 HTTPException(detail=...)로 내려주는 형태에서 메시지만 뽑아낸다. detail은 보통
+// 문자열({"detail": "..."})이지만, 하루 1개 제한 409 응답처럼 구조화된 객체
+// ({"detail": {"code": ..., "message": ..., ...}})로 올 때도 있어 둘 다 처리한다.
 fun extractDetailMessage(rawBody: String?): String? {
     val body = sanitizeRawBody(rawBody) ?: return null
     return runCatching {
-        JsonParser.parseString(body).asJsonObject.get("detail")?.asString
+        val detail = JsonParser.parseString(body).asJsonObject.get("detail") ?: return@runCatching null
+        when {
+            detail.isJsonPrimitive -> detail.asString
+            detail.isJsonObject -> detail.asJsonObject.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+            else -> null
+        }
     }.getOrNull()?.takeIf { it.isNotBlank() }
+}
+
+// 하루 1개 제한 때문에 생성 요청이 409로 거부된 경우의 상세 정보.
+// {"detail": {"code": "DIARY_ALREADY_EXISTS", "message": "...", "date": "...", "existing_diary_id": 123}}
+data class DuplicateDiaryDetail(
+    val message: String,
+    val date: String?,
+    val existingDiaryId: Long?
+)
+
+// extractDetailMessage와 달리, detail이 DIARY_ALREADY_EXISTS 코드를 가진 객체일 때만 구조화된
+// 필드(existing_diary_id 등)까지 뽑아낸다. 그 외 형태/코드면 null.
+fun extractDuplicateDiaryDetail(rawBody: String?): DuplicateDiaryDetail? {
+    val body = sanitizeRawBody(rawBody) ?: return null
+    return runCatching {
+        val detail = JsonParser.parseString(body).asJsonObject.get("detail") ?: return@runCatching null
+        if (!detail.isJsonObject) return@runCatching null
+        val detailObject = detail.asJsonObject
+        val code = detailObject.get("code")?.takeIf { it.isJsonPrimitive }?.asString
+        if (code != "DIARY_ALREADY_EXISTS") return@runCatching null
+        DuplicateDiaryDetail(
+            message = detailObject.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+                ?: "이 날짜에는 이미 일기가 있어요.",
+            date = detailObject.get("date")?.takeIf { it.isJsonPrimitive }?.asString,
+            existingDiaryId = detailObject.get("existing_diary_id")?.takeIf { it.isJsonPrimitive }?.asLong
+        )
+    }.getOrNull()
 }
 
 private fun statusCodeFallbackMessage(code: Int): String = when (code) {

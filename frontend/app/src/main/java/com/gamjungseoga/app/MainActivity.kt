@@ -52,10 +52,11 @@ import com.gamjungseoga.app.screens.diary.DiaryGeneratingScreen
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import com.gamjungseoga.app.screens.diary.DiaryQuestionScreen
+import com.gamjungseoga.app.screens.diary.DiaryRewriteRequest
 import com.gamjungseoga.app.screens.diary.DiaryViewModel
 import com.gamjungseoga.app.screens.diary.DiaryWhenScreen
 import com.gamjungseoga.app.screens.diary.DiaryWhoScreen
-import com.gamjungseoga.app.screens.diary.buildDayImageUrls
+import com.gamjungseoga.app.screens.diary.buildDiaryDayInfo
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestScreen
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestSubmitState
 import com.gamjungseoga.app.screens.emotiontest.EmotionTestViewModel
@@ -108,6 +109,17 @@ fun GamjeongseogaApp() {
         if (TokenStore.getToken() != null) Screen.Home.route else Screen.Login.route
     }
     val currentRoute = backStackEntry?.destination?.route ?: startDestination
+
+    // 하루 1개 제한 때문에 생기는 "이미 있는 일기 보러가기" 이동(날짜 캘린더에서 기존 날짜를
+    // 누른 경우, 생성 중 중복 감지된 경우) 공통 처리: 백스택을 모두 비우고 Home -> DiaryDetail
+    // 순으로 다시 쌓아서, 뒤로가기를 누르면 Home으로 돌아가도록 한다.
+    val goToDiaryDetail: (Long) -> Unit = { diaryId ->
+        navController.navigate(Screen.Home.route) {
+            popUpTo(navController.graph.id) { inclusive = true }
+            launchSingleTop = true
+        }
+        navController.navigate(Screen.DiaryDetail.routeFor(diaryId))
+    }
 
     // 로그인 화면/회원가입 플로우에서는 로그인하지 않은 사용자가 하단 탭으로 홈/설정 등에
     // 접근할 수 없도록 탭바 자체를 그리지 않는다.
@@ -195,7 +207,11 @@ fun GamjeongseogaApp() {
                     val diaryId = entry.arguments?.getLong(Screen.DiaryDetail.ARG_DIARY_ID) ?: -1L
                     DiaryDetailScreen(
                         diaryId = diaryId,
-                        onBack = { navController.popBackStack() }
+                        onBack = { navController.popBackStack() },
+                        onRewriteClick = { date ->
+                            DiaryRewriteRequest.request(date)
+                            navController.navigate(Screen.DiaryGraph.route)
+                        }
                     )
                 }
                 composable(Screen.Analysis.route) { AnalysisScreen() }
@@ -420,21 +436,36 @@ fun GamjeongseogaApp() {
                 navigation(startDestination = Screen.DiaryDate.route, route = Screen.DiaryGraph.route) {
                     composable(Screen.DiaryDate.route) { entry ->
                         val diaryViewModel: DiaryViewModel = entry.sharedDiaryViewModel(navController)
-                        // 날짜 셀 썸네일용으로 일기 목록을 따로 불러옴 (Home/Archive와 같은
-                        // DiaryListViewModel 재사용 - 이 화면 전용 상태는 따로 둘 필요가 없음).
-                        val diaryListViewModel: DiaryListViewModel = viewModel()
-                        val diaryListState = diaryListViewModel.state
-                        val dayImageUrls = remember(diaryListState) {
-                            buildDayImageUrls((diaryListState as? DiaryListState.Loaded)?.diaries.orEmpty())
+                        // 일기 상세의 "다시 작성하기"로 들어온 경우: 날짜 선택 단계를 건너뛰고
+                        // 그 일기의 날짜로 고정한 채 바로 다음 질문 단계로 넘어간다. remember에
+                        // 키를 주지 않아 이 백스택 엔트리당 한 번만 소비(consume)된다.
+                        val pendingRewriteDate = remember { DiaryRewriteRequest.consume() }
+                        if (pendingRewriteDate != null) {
+                            LaunchedEffect(pendingRewriteDate) {
+                                diaryViewModel.startOverwrite(pendingRewriteDate)
+                                navController.navigate(Screen.DiaryWhat.route) {
+                                    popUpTo(Screen.DiaryDate.route) { inclusive = true }
+                                }
+                            }
+                        } else {
+                            // 날짜 셀 썸네일/하루 1개 제한 체크용으로 일기 목록을 따로 불러옴
+                            // (Home/Archive와 같은 DiaryListViewModel 재사용 - 이 화면 전용
+                            // 상태는 따로 둘 필요가 없음).
+                            val diaryListViewModel: DiaryListViewModel = viewModel()
+                            val diaryListState = diaryListViewModel.state
+                            val dayDiaryInfo = remember(diaryListState) {
+                                buildDiaryDayInfo((diaryListState as? DiaryListState.Loaded)?.diaries.orEmpty())
+                            }
+                            DiaryDateScreen(
+                                initialDate = diaryViewModel.draft.date,
+                                onDateSelected = { date ->
+                                    diaryViewModel.setDate(date)
+                                    navController.navigate(Screen.DiaryWhat.route)
+                                },
+                                onExistingDiaryClick = goToDiaryDetail,
+                                dayDiaryInfo = dayDiaryInfo
+                            )
                         }
-                        DiaryDateScreen(
-                            initialDate = diaryViewModel.draft.date,
-                            onDateSelected = { date ->
-                                diaryViewModel.setDate(date)
-                                navController.navigate(Screen.DiaryWhat.route)
-                            },
-                            dayImageUrls = dayImageUrls
-                        )
                     }
                     composable(Screen.DiaryWhat.route) { entry ->
                         val diaryViewModel: DiaryViewModel = entry.sharedDiaryViewModel(navController)
@@ -505,7 +536,8 @@ fun GamjeongseogaApp() {
                                     popUpTo(navController.graph.id) { inclusive = true }
                                     launchSingleTop = true
                                 }
-                            }
+                            },
+                            onViewExistingDiary = goToDiaryDetail
                         )
                     }
                     composable(Screen.DiaryComplete.route) { entry ->

@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.SentimentSatisfied
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,8 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gamjungseoga.app.components.ConfirmDialog
 import com.gamjungseoga.app.ui.theme.AccentTerracotta
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
@@ -239,86 +238,6 @@ fun SettingsScreen(
             },
             onDismiss = { if (!isDeleting) showDeleteDialog = false }
         )
-    }
-}
-
-@Composable
-private fun ConfirmDialog(
-    title: String,
-    message: String,
-    confirmText: String,
-    confirmColor: Color,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-    cancelText: String = "취소",
-    loading: Boolean = false
-) {
-    Dialog(onDismissRequest = { if (!loading) onDismiss() }) {
-        Surface(
-            color = SurfaceColor,
-            shape = RoundedCornerShape(32.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TitleBrown,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MonthLabelGray,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        onClick = onDismiss,
-                        enabled = !loading,
-                        color = CalendarCellGray,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                            Text(cancelText, style = MaterialTheme.typography.bodyMedium, color = MonthLabelGray)
-                        }
-                    }
-                    Surface(
-                        onClick = onConfirm,
-                        enabled = !loading,
-                        color = if (loading) confirmColor.copy(alpha = 0.5f) else confirmColor,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                            if (loading) {
-                                CircularProgressIndicator(
-                                    color = Color.White,
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            } else {
-                                Text(confirmText, style = MaterialTheme.typography.bodyMedium, color = Color.White)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

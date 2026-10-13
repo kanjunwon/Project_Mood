@@ -80,7 +80,8 @@ private fun progressForElapsed(elapsedSeconds: Float): Float {
 fun DiaryGeneratingScreen(
     diaryViewModel: DiaryViewModel,
     onComplete: () -> Unit,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    onViewExistingDiary: (Long) -> Unit
 ) {
     val generationState = diaryViewModel.generationState
 
@@ -127,6 +128,7 @@ fun DiaryGeneratingScreen(
         generatingPhrases.last { elapsedSeconds >= it.atSeconds }.text
     }
     val errorState = generationState as? DiaryGenerationState.Error
+    val duplicateState = generationState as? DiaryGenerationState.DuplicateExists
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -146,7 +148,14 @@ fun DiaryGeneratingScreen(
         )
         Spacer(Modifier.height(32.dp))
 
-        if (errorState != null) {
+        if (duplicateState != null) {
+            DiaryGeneratingDuplicateContent(
+                message = duplicateState.message,
+                existingDiaryId = duplicateState.existingDiaryId,
+                onViewExisting = onViewExistingDiary,
+                onExit = onExit
+            )
+        } else if (errorState != null) {
             DiaryGeneratingErrorContent(
                 message = errorState.message,
                 canRetry = errorState.canRetry && retryCount < MAX_RETRIES,
@@ -210,6 +219,40 @@ private fun DiaryGeneratingErrorContent(
     Spacer(Modifier.height(24.dp))
     if (canRetry) {
         DiaryGeneratingActionButton(text = "다시 시도하기", onClick = onRetry, filled = true)
+        Spacer(Modifier.height(12.dp))
+    }
+    DiaryGeneratingActionButton(text = "돌아가기", onClick = onExit, filled = false)
+}
+
+@Composable
+private fun DiaryGeneratingDuplicateContent(
+    message: String,
+    existingDiaryId: Long?,
+    onViewExisting: (Long) -> Unit,
+    onExit: () -> Unit
+) {
+    Text(
+        "이 날짜에는 이미 일기가 있어요",
+        style = MaterialTheme.typography.headlineSmall,
+        color = TitleBrown,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(horizontal = 32.dp)
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = BodyGray,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(horizontal = 32.dp)
+    )
+    Spacer(Modifier.height(24.dp))
+    if (existingDiaryId != null) {
+        DiaryGeneratingActionButton(
+            text = "보러가기",
+            onClick = { onViewExisting(existingDiaryId) },
+            filled = true
+        )
         Spacer(Modifier.height(12.dp))
     }
     DiaryGeneratingActionButton(text = "돌아가기", onClick = onExit, filled = false)

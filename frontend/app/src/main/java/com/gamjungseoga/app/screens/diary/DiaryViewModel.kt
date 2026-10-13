@@ -10,8 +10,11 @@ import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.network.DiaryGenerateRequest
 import com.gamjungseoga.app.network.DiaryGenerateResponse
+import com.gamjungseoga.app.network.SEOUL_ZONE
 import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.extractDuplicateDiaryDetail
 import com.gamjungseoga.app.network.limitErrorMessageLength
+import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import java.net.ConnectException
 import java.net.UnknownHostException
 import java.time.LocalDate
@@ -36,7 +39,11 @@ private const val MAX_POLL_MILLIS = 6 * 60 * 1_000L
 private const val MAX_CONSECUTIVE_POLL_FAILURES = 3
 
 data class DiaryDraft(
-    val date: LocalDate = LocalDate.now(),
+    // 기기 시간대가 아니라 서버 기준(서울)으로 기본 날짜를 잡아야 한다. 기기 시간대가 서울보다
+    // 앞서 있으면(예: 호주) LocalDate.now()가 서울 기준 "오늘"보다 하루 앞선 날짜를 내놓을 수
+    // 있는데, 이 값이 DiaryDateScreen의 initialDate로 쓰여 그대로 제출되면 서버가 미래 날짜로
+    // 거부해야 할 요청이 생긴다(캘린더 클릭 자체는 이미 SEOUL_ZONE 기준으로 막혀 있음).
+    val date: LocalDate = LocalDate.now(SEOUL_ZONE),
     val what: String = "",
     val why: String = "",
     val who: Set<String> = emptySet(),
@@ -56,10 +63,36 @@ sealed interface DiaryGenerationState {
     // 실패했거나, job이 이미 확정적으로 끝났다는 걸 확인한 경우 - 서버 쪽에 저장된 게 없으므로
     // 중복이 생기지 않는다).
     data class Error(val message: String, val jobId: String?, val canRetry: Boolean) : DiaryGenerationState
+
+    // 같은 날짜에 이미 일기가 있어서(하루 1개 제한) 생성이 거부된 경우. existingDiaryId를 모르면
+    // (job 폴링 중 경쟁 상태로 감지된 경우 등) null일 수 있는데, 그때는 화면에서 "보러가기" 버튼을
+    // 숨긴다.
+    data class DuplicateExists(val existingDiaryId: Long?, val message: String) : DiaryGenerationState
+}
+
+// 일기 상세 화면의 "다시 작성하기"는 아직 존재하지 않는 DiaryViewModel 인스턴스(일기작성 그래프에
+// 진입하기 전)에 "이 날짜로, 날짜 선택은 건너뛰고 들어가라"는 의도를 전달해야 해서, 그래프 진입
+// 시점에 한 번만 소비되는 전역 요청함에 담아 넘긴다.
+object DiaryRewriteRequest {
+    private var pendingDate: LocalDate? = null
+
+    fun request(date: LocalDate) {
+        pendingDate = date
+    }
+
+    fun consume(): LocalDate? {
+        val date = pendingDate
+        pendingDate = null
+        return date
+    }
 }
 
 class DiaryViewModel : ViewModel() {
     var draft by mutableStateOf(DiaryDraft())
+        private set
+
+    // true면 "다시 작성하기" 플로우: 생성 요청에 overwrite=true를 담아 보낸다.
+    var overwrite by mutableStateOf(false)
         private set
 
     var generationState by mutableStateOf<DiaryGenerationState>(DiaryGenerationState.Idle)
@@ -67,6 +100,13 @@ class DiaryViewModel : ViewModel() {
 
     fun setDate(date: LocalDate) {
         draft = draft.copy(date = date)
+    }
+
+    // 일기 상세 화면의 "다시 작성하기 확인"으로 진입한 경우 호출. 날짜를 그 일기의 날짜로
+    // 고정하고(날짜 선택 단계는 건너뜀) 나머지 답변은 새로 입력받는다.
+    fun startOverwrite(date: LocalDate) {
+        draft = DiaryDraft(date = date)
+        overwrite = true
     }
 
     fun setWhat(text: String) {
@@ -97,7 +137,7 @@ class DiaryViewModel : ViewModel() {
     fun submitDiary() {
         if (generationState is DiaryGenerationState.Loading) return
         generationState = DiaryGenerationState.Loading
-        val request = buildRequest(draft)
+        val request = buildRequest(draft, overwrite)
 
         viewModelScope.launch {
             val startMillis = System.currentTimeMillis()
@@ -116,7 +156,7 @@ class DiaryViewModel : ViewModel() {
         if (!errorState.canRetry) return
 
         generationState = DiaryGenerationState.Loading
-        val request = buildRequest(draft)
+        val request = buildRequest(draft, overwrite)
         val existingJobId = errorState.jobId
 
         viewModelScope.launch {
@@ -133,6 +173,17 @@ class DiaryViewModel : ViewModel() {
     private suspend fun createJobAndPoll(request: DiaryGenerateRequest): DiaryGenerationState {
         val jobId = try {
             ApiClient.diaryApi.createDiaryJob(request).jobId
+        } catch (e: HttpException) {
+            // 하루 1개 제한: overwrite 없이 이미 일기가 있는 날짜로 요청하면 409 + 구조화된
+            // detail({"code": "DIARY_ALREADY_EXISTS", ...})을 준다.
+            if (e.code() == 409) {
+                val rawBody = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
+                val duplicate = extractDuplicateDiaryDetail(rawBody)
+                if (duplicate != null) {
+                    return DiaryGenerationState.DuplicateExists(duplicate.existingDiaryId, duplicate.message)
+                }
+            }
+            return DiaryGenerationState.Error(describeError(e), jobId = null, canRetry = true)
         } catch (e: Exception) {
             return DiaryGenerationState.Error(describeError(e), jobId = null, canRetry = true)
         }
@@ -161,11 +212,23 @@ class DiaryViewModel : ViewModel() {
                             )
                         }
                     }
-                    "error" -> return DiaryGenerationState.Error(
-                        status.error?.let { limitErrorMessageLength(it) } ?: "일기 생성에 실패했어요.",
-                        jobId = null,
-                        canRetry = true
-                    )
+                    "error" -> {
+                        // 같은 날짜로 동시에 두 job이 대기 중이었던 경쟁 상태(하루 1개 제한 위반).
+                        // 이 응답에는 existing_diary_id가 없으니, 방금 보낸 날짜로 저장된 일기를
+                        // 목록에서 찾아 "보러가기" 대상으로 쓴다(없으면 버튼 없이 안내만 보여줌).
+                        if (status.errorCode == "DIARY_ALREADY_EXISTS") {
+                            return DiaryGenerationState.DuplicateExists(
+                                existingDiaryId = findDiaryIdForDate(request.date),
+                                message = status.error?.let { limitErrorMessageLength(it) }
+                                    ?: "이 날짜에는 이미 일기가 있어요."
+                            )
+                        }
+                        return DiaryGenerationState.Error(
+                            status.error?.let { limitErrorMessageLength(it) } ?: "일기 생성에 실패했어요.",
+                            jobId = null,
+                            canRetry = true
+                        )
+                    }
                     else -> Unit // processing - 계속 폴링
                 }
             } catch (e: HttpException) {
@@ -216,6 +279,15 @@ class DiaryViewModel : ViewModel() {
             }
     }
 
+    // 같은 날짜 일기 중복 감지 시(job 폴링 경쟁 상태) existing_diary_id가 안 내려오므로, 그 날짜에
+    // 해당하는 일기를 목록에서 직접 찾는다. dateStr은 "YYYY-MM-DD"(ISO_LOCAL_DATE).
+    private suspend fun findDiaryIdForDate(dateStr: String): Long? {
+        val diaries = runCatching { ApiClient.diaryApi.getDiaries().diaries }.getOrNull() ?: return null
+        return diaries.firstOrNull { entry ->
+            parseServerDateTimeInSeoul(entry.createdAt)?.toLocalDate()?.toString() == dateStr
+        }?.id
+    }
+
     private fun logElapsed(startMillis: Long) {
         val elapsedMillis = System.currentTimeMillis() - startMillis
         Log.d(DIARY_GEN_TIMING_TAG, "일기 생성 완료까지: ${elapsedMillis}ms (${elapsedMillis / 1000.0}s)")
@@ -235,7 +307,7 @@ private fun diaryGenerateResponseFrom(entry: DiaryEntry): DiaryGenerateResponse 
 
 private val isoDateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 
-private fun buildRequest(draft: DiaryDraft): DiaryGenerateRequest {
+private fun buildRequest(draft: DiaryDraft, overwrite: Boolean): DiaryGenerateRequest {
     val who = (draft.who.toList() + listOfNotNull(draft.whoCustom.trim().takeIf { it.isNotEmpty() }))
         .ifEmpty { listOf("혼자") }
         .joinToString(",")
@@ -246,7 +318,8 @@ private fun buildRequest(draft: DiaryDraft): DiaryGenerateRequest {
         who = who,
         whenText = formatWhen(draft.date, draft.time),
         where = draft.where.trim(),
-        date = draft.date.format(isoDateFormatter)
+        date = draft.date.format(isoDateFormatter),
+        overwrite = overwrite
     )
 }
 
