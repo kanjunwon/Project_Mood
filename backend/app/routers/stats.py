@@ -4,14 +4,16 @@ from app.dependencies import get_current_user_id
 from app.schemas.stats import DailyStatsResponse, MonthlyStatsResponse
 from app.services.stats_service import compute_daily_stats, compute_monthly_stats
 from app.repositories.diary_repository import get_diaries_by_date_range
+from app.date_utils import today_kst
 
 router = APIRouter()
 
 
 @router.get("/stats/daily/me", response_model=DailyStatsResponse)
 def get_daily_stats(date: str = None, user_id: int = Depends(get_current_user_id)):
-    # date 안 주면 오늘 날짜로 (형식: YYYY-MM-DD)
-    target_date = date or date_cls.today().isoformat()
+    # date 안 주면 오늘 날짜로 (형식: YYYY-MM-DD). 서버 시계가 UTC여도 한국 날짜 기준
+    # 조회 범위(한국 시간 0시~다음날 0시)는 get_diaries_by_date_range가 처리
+    target_date = date or today_kst().isoformat()
     target = date_cls.fromisoformat(target_date)
 
     start = target.isoformat()

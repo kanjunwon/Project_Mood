@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 from app.emotion_taxonomy import EMOTION_CATEGORIES, SUB_TO_MID, get_valence
+from app.date_utils import kst_date_of
 
 # 재유가 정한 중분류(8개) 색상 - 색채심리학 기반
 MID_COLORS = {
@@ -81,10 +82,10 @@ def compute_monthly_stats(entries: list, year: int, month: int) -> dict:
     top3 = _top_n_emotions(entries, n=3)
     top_emotion = top3[0]["emotion"] if top3 else None
 
+    # 앱과 같은 한국 날짜 기준으로 묶음 (UTC 앞 10글자로 묶으면 새벽 00~09시 일기가 전날로 잡힘)
     by_date = defaultdict(list)
     for entry in entries:
-        created = entry.get("created_at", "")
-        date_str = created[:10] if created else "unknown"
+        date_str = kst_date_of(entry.get("created_at")) or "unknown"
         by_date[date_str].append(entry)
 
     emotion_flow = []

@@ -166,3 +166,114 @@ def test_past_when_text_is_accepted_without_date_field():
     when = f"{t.month}월 {t.day}일 오후 2시"
     r = client.post("/generate-diary", json=_payload(when=when), headers=_AUTH_HEADERS)
     assert r.status_code == 200, r.text
+
+
+# ---------------------------------------------------------------------------
+# 2026-10 추가: 하루 1개 규칙(한국 날짜) + overwrite("다시 작성하기") + DELETE /diaries/{id}
+# DB가 없는 테스트 환경이라 저장소 함수를 monkeypatch로 바꿔서 검증
+# ---------------------------------------------------------------------------
+import app.routers.diary as diary_router
+
+
+def _fake_db(monkeypatch, existing):
+    calls = {"deleted": None, "saved": False}
+
+    def fake_save(row):
+        calls["saved"] = True
+        return [{"id": 999}]
+
+    def fake_delete_ids(user_id, ids):
+        calls["deleted"] = (user_id, list(ids))
+
+    monkeypatch.setattr(diary_router, "get_diaries_on_date", lambda user_id, d: existing)
+    monkeypatch.setattr(diary_router, "save_diary", fake_save)
+    monkeypatch.setattr(diary_router, "delete_diaries_by_ids", fake_delete_ids)
+    return calls
+
+
+def test_duplicate_date_returns_409_with_code(monkeypatch):
+    calls = _fake_db(monkeypatch, [{"id": 7, "created_at": "2026-10-13T01:00:00+00:00"}])
+    today = datetime.now(_KST).date().isoformat()
+    r = client.post("/generate-diary", json=_payload(date=today), headers=_AUTH_HEADERS)
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "DIARY_ALREADY_EXISTS"
+    assert detail["date"] == today
+    assert detail["existing_diary_id"] == 7
+    assert calls["saved"] is False
+
+    r2 = client.post("/generate-diary/jobs", json=_payload(date=today), headers=_AUTH_HEADERS)
+    assert r2.status_code == 409
+    assert r2.json()["detail"]["code"] == "DIARY_ALREADY_EXISTS"
+
+
+def test_overwrite_saves_new_then_deletes_old(monkeypatch):
+    calls = _fake_db(monkeypatch, [{"id": 7}, {"id": 8}])
+    r = client.post("/generate-diary", json=_payload(overwrite=True), headers=_AUTH_HEADERS)
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == 999
+    assert calls["deleted"] == ("1", [7, 8])
+
+
+def test_overwrite_keeps_old_when_save_fails(monkeypatch):
+    calls = _fake_db(monkeypatch, [{"id": 7}])
+
+    def broken_save(row):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(diary_router, "save_diary", broken_save)
+    r = client.post("/generate-diary", json=_payload(overwrite=True), headers=_AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json()["id"] is None
+    assert calls["deleted"] is None
+
+
+def test_job_reports_duplicate_code_when_caught_inside_pipeline(monkeypatch):
+    # job 생성 시점엔 비어 있다가(1차 확인 통과) 파이프라인 안에서 중복이 발견되는 경우
+    state = {"n": 0}
+
+    def existing_after_first_call(user_id, d):
+        state["n"] += 1
+        return [] if state["n"] == 1 else [{"id": 7}]
+
+    _fake_db(monkeypatch, [])
+    monkeypatch.setattr(diary_router, "get_diaries_on_date", existing_after_first_call)
+    r = client.post("/generate-diary/jobs", json=_payload(), headers=_AUTH_HEADERS)
+    assert r.status_code == 202
+    body = client.get(f"/generate-diary/jobs/{r.json()['job_id']}", headers=_AUTH_HEADERS).json()
+    assert body["status"] == "error"
+    assert body["error_code"] == "DIARY_ALREADY_EXISTS"
+    assert isinstance(body["error"], str)
+
+
+def test_duplicate_check_uses_kst_today_when_no_date(monkeypatch):
+    seen = {}
+
+    def capture(user_id, d):
+        seen["d"] = d
+        return []
+
+    _fake_db(monkeypatch, [])
+    monkeypatch.setattr(diary_router, "get_diaries_on_date", capture)
+    r = client.post("/generate-diary", json=_payload(), headers=_AUTH_HEADERS)
+    assert r.status_code == 200
+    assert seen["d"] == datetime.now(_KST).date()
+
+
+def test_delete_diary(monkeypatch):
+    seen = {}
+
+    def fake_delete(user_id, diary_id):
+        seen["args"] = (user_id, diary_id)
+        return diary_id == 5
+
+    monkeypatch.setattr(diary_router, "delete_diary", fake_delete)
+    r = client.delete("/diaries/5", headers=_AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json() == {"status": "success", "deleted_id": 5}
+    assert seen["args"] == ("1", 5)  # user_id는 토큰에서
+    assert client.delete("/diaries/6", headers=_AUTH_HEADERS).status_code == 404
+
+
+def test_delete_diary_requires_auth():
+    assert client.delete("/diaries/5").status_code in (401, 403)

@@ -7,21 +7,21 @@ MOCK_ENTRIES = [
     {
         "who": "친구, 연인",
         "where_": "한강공원",
-        "created_at": "2026-08-01T10:00:00",
+        "created_at": "2026-08-01T10:00:00+09:00",
         "emotion_scores": {"기쁜": 0.6, "슬픈": 0.05, "화나는": 0.05, "불안한": 0.1, "편안한": 0.15, "설레는": 0.05},
         "sentiment_score": 0.7,
     },
     {
         "who": "가족",
         "where_": "본가",
-        "created_at": "2026-08-02T18:00:00",
+        "created_at": "2026-08-02T18:00:00+09:00",
         "emotion_scores": {"기쁜": 0.4, "슬픈": 0.1, "화나는": 0.05, "불안한": 0.05, "편안한": 0.35, "설레는": 0.05},
         "sentiment_score": 0.5,
     },
     {
         "who": "친구",
         "where_": "한강공원",
-        "created_at": "2026-08-02T20:00:00",
+        "created_at": "2026-08-02T20:00:00+09:00",
         "emotion_scores": {"기쁜": 0.1, "슬픈": 0.5, "화나는": 0.1, "불안한": 0.2, "편안한": 0.05, "설레는": 0.05},
         "sentiment_score": -0.4,
     },
@@ -71,3 +71,23 @@ def test_compute_monthly_stats_empty():
     result = compute_monthly_stats([], 2026, 8)
     assert result["top_emotion"] is None
     assert result["emotion_flow"] == []
+
+# 2026-10: 날짜 묶기를 UTC 앞 10글자 -> 한국 날짜로 변경
+def test_monthly_stats_groups_by_kst_date():
+    entries = [
+        # 한국 시간 8/2 새벽 3시 = UTC 8/1 18시. 예전 방식이면 8/1로 잡혔음
+        {"created_at": "2026-08-01T18:00:00+00:00", "emotion_scores": {"기쁜": 1.0}, "sentiment_score": 0.5},
+        # 한국 시간 8/2 저녁 (Supabase가 주는 소수점 5자리 형태)
+        {"created_at": "2026-08-02T10:00:00.12345+00:00", "emotion_scores": {"슬픈": 1.0}, "sentiment_score": -0.5},
+    ]
+    result = compute_monthly_stats(entries, 2026, 8)
+    assert [d["date"] for d in result["emotion_flow"]] == ["2026-08-02"]
+
+
+def test_kst_date_of():
+    from app.date_utils import kst_date_of, kst_day_start
+    assert kst_date_of("2026-08-01T15:00:00+00:00") == "2026-08-02"
+    assert kst_date_of("2026-08-01T14:59:59Z") == "2026-08-01"
+    assert kst_date_of("2026-08-01T23:30:00+09:00") == "2026-08-01"
+    assert kst_date_of(None) is None
+    assert kst_day_start("2026-08-01") == "2026-08-01T00:00:00+09:00"

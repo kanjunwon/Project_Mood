@@ -14,6 +14,9 @@ class DiaryRequest(BaseModel):
         default=None,
         validation_alias=AliasChoices("date", "entry_date", "diary_date"),
     )
+    # 하루 1개 규칙: 같은 날짜(한국 날짜)에 일기가 이미 있으면 기본은 409.
+    # "다시 작성하기"는 true로 보내면 새 일기 저장에 성공한 뒤 기존 일기를 지움 (생성 실패 시 기존 일기 유지)
+    overwrite: bool = False
     # user_id는 더 이상 여기 안 받음 - 로그인 토큰(Authorization 헤더)에서만 가져옴
 
 
@@ -38,3 +41,5 @@ class DiaryJobStatus(BaseModel):
     status: str  # "processing" | "done" | "error"
     result: Optional[DiaryResponse] = None  # status == "done"일 때만
     error: Optional[str] = None  # status == "error"일 때만
+    # 앱이 분기할 수 있는 에러 종류. 지금은 "DIARY_ALREADY_EXISTS"(같은 날짜 일기 있음)만 있고 나머지는 None
+    error_code: Optional[str] = None

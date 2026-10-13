@@ -3,7 +3,7 @@ import re
 import threading
 import time
 import uuid
-from datetime import date as date_cls, datetime, timedelta, timezone
+from datetime import date as date_cls, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -11,7 +11,10 @@ from app.dependencies import get_current_user_id
 from app.schemas.diary import DiaryRequest, DiaryResponse, DiaryJobCreated, DiaryJobStatus
 from app.services.llama_service import generate_diary_text
 from app.services.kobert_service import analyze_emotion
-from app.repositories.diary_repository import save_diary, get_diary_by_user
+from app.repositories.diary_repository import (
+    save_diary, get_diary_by_user, get_diaries_on_date, delete_diary, delete_diaries_by_ids,
+)
+from app.date_utils import KST, today_kst
 from app.repositories.user_repository import get_user_by_id
 from app.repositories.personal_test_repository import get_latest_weight_profile
 from app.weight_algorithm import apply_weight
@@ -23,8 +26,6 @@ MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 # 가장 최근 /generate-diary 요청의 단계별 소요시간(초). 서버 로그에도 찍고,
 # 측정 스크립트는 /debug/last-pipeline-timings로 읽어감 (ENABLE_DEBUG_ENDPOINTS=true일 때만)
 LAST_PIPELINE_TIMINGS: dict = {}
-
-KST = timezone(timedelta(hours=9))
 
 # 이미지 생성은 GPU 1장을 쓰므로 동시에 여러 개 돌리지 않고 한 번에 하나씩 처리 (나머지는 대기)
 _PIPELINE_LOCK = threading.Semaphore(1)
@@ -76,8 +77,8 @@ def _created_at_for(entry_date: Optional[date_cls]) -> Optional[str]:
     """
     오늘이거나 날짜 미지정이면 None (DB 기본값 now() 사용 = 기존 동작 그대로).
     과거 날짜면 그 날짜로 created_at을 지정한다.
-    통계/보관함이 created_at의 앞 10글자(UTC 기준 날짜)로 날짜를 묶기 때문에,
-    한국 시간 09:00~23:59 사이로 잡아야 UTC 날짜와 한국 날짜가 같아진다.
+    서버 집계는 한국 날짜 기준이지만, created_at을 UTC 앞 10글자로 읽는 곳(예전 앱 버전 등)이
+    있어도 날짜가 같게 나오도록 한국 시간 09:00~23:59 사이로 잡는다.
     """
     if entry_date is None or entry_date == datetime.now(KST).date():
         return None
@@ -87,6 +88,31 @@ def _created_at_for(entry_date: Optional[date_cls]) -> Optional[str]:
         hours=9, seconds=seconds_in_window
     )
     return stamp.isoformat()
+
+
+DUPLICATE_CODE = "DIARY_ALREADY_EXISTS"
+
+
+def _check_one_per_day(request: DiaryRequest, user_id: int, entry_date: Optional[date_cls]) -> list:
+    """
+    하루 1개 규칙 (한국 날짜 기준). 그 날 일기가 이미 있으면
+    overwrite=false -> 409, overwrite=true -> 나중에 지울 기존 일기 id 목록을 돌려줌.
+    DB 조회 자체가 실패하면 예전처럼 막지 않고 진행 (어차피 저장도 실패할 상황).
+    """
+    d = entry_date or today_kst()
+    try:
+        existing = get_diaries_on_date(str(user_id), d)
+    except Exception as e:
+        print(f"같은 날짜 일기 조회 실패 (중복 확인 없이 진행): {e}")
+        return []
+    if existing and not request.overwrite:
+        raise HTTPException(status_code=409, detail={
+            "code": DUPLICATE_CODE,
+            "message": "이 날짜에는 이미 일기가 있습니다. 다시 작성하려면 overwrite=true로 보내주세요",
+            "date": d.isoformat(),
+            "existing_diary_id": existing[0].get("id"),
+        })
+    return [r["id"] for r in existing if r.get("id") is not None]
 
 
 def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date_cls],
@@ -101,6 +127,10 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
     """
     timings = diag if diag is not None else {}
     t_start = time.time()
+
+    # 하루 1개 규칙. _PIPELINE_LOCK 안에서 돌기 때문에 같은 날짜 job이 두 개 대기 중이어도
+    # 두 번째는 여기서 걸림. LLM/이미지 돌리기 전에 확인해서 GPU 시간 낭비 안 함.
+    replace_ids = _check_one_per_day(request, user_id, entry_date) if save_db else []
 
     # user_id는 body가 아니라 로그인 토큰에서만 가져옴. 이 값으로 프로필(아바타 설정)도
     # 같이 조회해서 이미지 생성에 반영.
@@ -201,6 +231,12 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
             saved_id = saved[0].get("id")
     except Exception as e:
         print(f"DB 저장 실패 (일기 생성은 성공): {e}")
+    # 다시 작성하기: 새 일기가 저장된 경우에만 기존 일기를 지움 (저장 실패면 기존 일기 유지)
+    if saved_id is not None and replace_ids:
+        try:
+            delete_diaries_by_ids(str(user_id), replace_ids)
+        except Exception as e:
+            print(f"기존 일기 삭제 실패 (새 일기는 저장됨, 같은 날짜에 {len(replace_ids) + 1}개 남음): {e}")
     timings["db_save_sec"] = round(time.time() - t, 2)
     timings["total_sec"] = round(time.time() - t_start, 2)
 
@@ -252,11 +288,15 @@ def _job_worker(job_id: str, request: DiaryRequest, user_id: int, entry_date: Op
         with _PIPELINE_LOCK:
             diag["lock_acquired_at"] = time.time()  # 앞 작업 대기시간과 실제 처리시간을 구분하려고
             result = _run_pipeline(request, user_id, entry_date, diag=diag)
-        update = {"status": "done", "result": result, "error": None}
+        update = {"status": "done", "result": result, "error": None, "error_code": None}
     except HTTPException as e:
-        update = {"status": "error", "result": None, "error": str(e.detail)}
+        if isinstance(e.detail, dict):  # 409 중복 등 code가 붙은 에러
+            update = {"status": "error", "result": None,
+                      "error": e.detail.get("message"), "error_code": e.detail.get("code")}
+        else:
+            update = {"status": "error", "result": None, "error": str(e.detail), "error_code": None}
     except Exception as e:
-        update = {"status": "error", "result": None, "error": f"일기 생성 중 오류 발생: {e}"}
+        update = {"status": "error", "result": None, "error": f"일기 생성 중 오류 발생: {e}", "error_code": None}
     with _JOBS_LOCK:
         if job_id in _JOBS:
             _JOBS[job_id].update(update)
@@ -269,9 +309,11 @@ def create_diary_job(request: DiaryRequest, background_tasks: BackgroundTasks,
     일기 생성을 백그라운드로 시작하고 job_id를 바로 돌려준다 (1초 이내).
     앱은 GET /generate-diary/jobs/{job_id}를 2~3초마다 조회하다가 status가 done이면
     result(일기+그림)를 한 번에 화면에 보여주면 된다.
-    날짜 오류(미래 날짜 등)는 여기서 바로 400.
+    날짜 오류(미래 날짜 등)는 여기서 바로 400, 같은 날짜 일기가 이미 있으면(overwrite=false) 바로 409.
     """
     entry_date = _resolve_entry_date(request.date, request.when)
+    # 빠른 응답용 1차 확인. 최종 확인은 _run_pipeline 안(락 안)에서 한 번 더 함
+    _check_one_per_day(request, user_id, entry_date)
     _cleanup_jobs()
     job_id = uuid.uuid4().hex
     with _JOBS_LOCK:
@@ -290,7 +332,8 @@ def get_diary_job(job_id: str, user_id: int = Depends(get_current_user_id)):
     if snapshot is None or snapshot["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="job을 찾을 수 없습니다 (만료되었거나 서버가 재시작됨). /diaries/me로 확인하세요")
     return DiaryJobStatus(job_id=job_id, status=snapshot["status"],
-                          result=snapshot["result"], error=snapshot["error"])
+                          result=snapshot["result"], error=snapshot["error"],
+                          error_code=snapshot.get("error_code"))
 
 
 @router.get("/diaries/me")
@@ -301,3 +344,18 @@ def get_my_diaries(user_id: int = Depends(get_current_user_id)):
         raise HTTPException(status_code=500, detail=f"조회 중 오류 발생: {str(e)}")
 
     return {"status": "success", "diaries": diaries}
+
+
+@router.delete("/diaries/{diary_id}")
+def delete_my_diary(diary_id: int, user_id: int = Depends(get_current_user_id)):
+    """
+    본인 일기 삭제. 없는 id와 남의 일기는 구분 없이 404.
+    Storage에 올라간 그림 파일은 지우지 않음 (image_url만 같이 사라짐).
+    """
+    try:
+        deleted = delete_diary(str(user_id), diary_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"삭제 중 오류 발생: {str(e)}")
+    if not deleted:
+        raise HTTPException(status_code=404, detail="일기를 찾을 수 없습니다")
+    return {"status": "success", "deleted_id": diary_id}
