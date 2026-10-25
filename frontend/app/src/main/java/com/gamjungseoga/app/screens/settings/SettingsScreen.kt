@@ -20,10 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -38,10 +35,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gamjungseoga.app.R
 import com.gamjungseoga.app.components.ConfirmDialog
 import com.gamjungseoga.app.ui.theme.AccentTerracotta
 import com.gamjungseoga.app.ui.theme.ButtonMint
@@ -142,14 +142,14 @@ fun SettingsScreen(
             ) {
                 FeatureCard(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Filled.AutoFixHigh,
+                    icon = painterResource(R.drawable.settings_customize_icon),
                     title = "이미지\n커스터마이징",
                     buttonText = "변경하기",
                     onClick = onProfileCustomizeClick
                 )
                 FeatureCard(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Outlined.SentimentSatisfied,
+                    icon = painterResource(R.drawable.settings_emotion_test_icon),
                     title = "퍼스널\n감정 검사",
                     buttonText = "다시하기",
                     onClick = onEmotionTestClick
@@ -268,7 +268,7 @@ private fun StatsCard(daysCount: Int, emotionCount: Int) {
         ) {
             StatColumn(
                 modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.Edit,
+                icon = painterResource(R.drawable.settings_days_icon),
                 label = "감정 기록을 시작한 지",
                 value = daysCount.toString(),
                 unit = "Days"
@@ -279,7 +279,7 @@ private fun StatsCard(daysCount: Int, emotionCount: Int) {
             )
             StatColumn(
                 modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.FavoriteBorder,
+                icon = rememberVectorPainter(Icons.Outlined.FavoriteBorder),
                 label = "기록한 감정",
                 value = emotionCount.toString(),
                 unit = "Emotion"
@@ -289,7 +289,7 @@ private fun StatsCard(daysCount: Int, emotionCount: Int) {
 }
 
 @Composable
-private fun StatColumn(modifier: Modifier, icon: ImageVector, label: String, value: String, unit: String) {
+private fun StatColumn(modifier: Modifier, icon: Painter, label: String, value: String, unit: String) {
     Column(modifier = modifier) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = CountLabelBrown)
         Spacer(Modifier.height(8.dp))
@@ -311,7 +311,7 @@ private fun StatColumn(modifier: Modifier, icon: ImageVector, label: String, val
 @Composable
 private fun FeatureCard(
     modifier: Modifier = Modifier,
-    icon: ImageVector,
+    icon: Painter,
     title: String,
     buttonText: String,
     onClick: () -> Unit = {}
