@@ -5,7 +5,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -29,11 +28,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.decode.ImageDecoderDecoder
 import com.gamjungseoga.app.R
 import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.SolidGreen
@@ -52,7 +52,7 @@ private data class GeneratingPhrase(val atSeconds: Int, val text: String)
 
 private val generatingPhrases = listOf(
     GeneratingPhrase(0, "작성한 일기를 바탕으로\n감정 일기를 생성하고 있어요"),
-    GeneratingPhrase(20, "감정을 분석하고 있어요"),
+    GeneratingPhrase(20, "작성한 일기 속\n감정을 분석하고 있어요"),
     GeneratingPhrase(35, "감정에 어울리는 그림을\n그리고 있어요"),
     // 60초 기준으로는 거의 끝날 시점이라, 평소엔 안 보이고 유난히 오래 걸릴 때만 잠깐 보임
     GeneratingPhrase(50, "거의 다 됐어요\n조금만 기다려주세요")
@@ -131,23 +131,30 @@ fun DiaryGeneratingScreen(
     val errorState = generationState as? DiaryGenerationState.Error
     val duplicateState = generationState as? DiaryGenerationState.DuplicateExists
 
+    // Coil 기본 로더는 GIF를 첫 프레임만 정지 이미지로 그려서, SplashScreen과 같은 방식으로
+    // 애니메이션 디코더를 등록한 로더를 이 화면에서만 따로 둠.
+    val context = LocalContext.current
+    val gifImageLoader = remember(context) {
+        ImageLoader.Builder(context)
+            .components { add(ImageDecoderDecoder.Factory()) }
+            .build()
+    }
+
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         DiaryTopBar()
         Spacer(Modifier.weight(1f))
-        Image(
-            painter = painterResource(R.drawable.header_illustration),
+        // 스플래시와 같은 logo.gif. GIF 자체에 선 색이 들어있어서 tint하지 않고, 로딩 전에도 자리가
+        // 흔들리지 않게 원본 비율(1465x1564)로 공간을 잡아둠.
+        AsyncImage(
+            model = R.raw.logo,
+            imageLoader = gifImageLoader,
             contentDescription = null,
-            // 투명 배경의 흰색 선화라 밝은 배경에서 안 보여서 스플래시와 같이 갈색으로 칠함
-            colorFilter = ColorFilter.tint(TitleBrown),
-            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .padding(horizontal = 32.dp)
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(24.dp))
+                .fillMaxWidth(0.75f)
+                .aspectRatio(1465f / 1564f)
         )
         Spacer(Modifier.height(32.dp))
 
@@ -179,6 +186,8 @@ fun DiaryGeneratingScreen(
                     style = MaterialTheme.typography.headlineSmall,
                     color = TitleBrown,
                     textAlign = TextAlign.Center,
+                    // 문구가 바뀌어도 아래 진행바가 움직이지 않게 항상 두 줄 높이를 차지하게 함
+                    minLines = 2,
                     modifier = Modifier.padding(horizontal = 32.dp)
                 )
             }
@@ -193,7 +202,9 @@ fun DiaryGeneratingScreen(
                 color = SolidGreen,
                 // 지정 안 하면 테마의 surfaceContainerHighest(머티리얼 기본 연보라)가 트랙에 깔려서
                 // 보라색처럼 보였음. 채워진 부분과 같은 초록을 옅게 깔아 톤을 맞춤.
-                trackColor = SolidGreen.copy(alpha = 0.2f)
+                trackColor = SolidGreen.copy(alpha = 0.2f),
+                // 머티리얼 1.3부터 트랙 오른쪽 끝에 기본으로 그려지는 작은 점(stop indicator)을 없앰
+                drawStopIndicator = {}
             )
         }
         Spacer(Modifier.weight(1f))
