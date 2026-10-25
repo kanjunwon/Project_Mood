@@ -38,8 +38,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.gamjungseoga.app.network.ApiClient
+import com.gamjungseoga.app.network.describeUnexpectedError
+import com.gamjungseoga.app.network.describeConnectionFailure
 import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.describeTimeout
 import com.gamjungseoga.app.network.limitErrorMessageLength
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
@@ -221,10 +223,8 @@ fun hasValidNicknameLength(nickname: String): Boolean = nickname.length in 2..20
 
 // 로그인/회원가입 화면 공용 네트워크 에러 문구 (DiaryViewModel.describeError와 같은 패턴)
 fun describeAuthError(e: Exception): String = limitErrorMessageLength(when (e) {
-    is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
-    is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
-    is SocketTimeoutException, is TimeoutException ->
-        "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
+    is UnknownHostException, is ConnectException -> describeConnectionFailure(e)
+    is SocketTimeoutException, is TimeoutException -> describeTimeout(e)
     is HttpException -> {
         if (e.code() == 401) {
             "이메일 또는 비밀번호가 올바르지 않아요."
@@ -232,5 +232,5 @@ fun describeAuthError(e: Exception): String = limitErrorMessageLength(when (e) {
             describeHttpException(e)
         }
     }
-    else -> e.message ?: "요청에 실패했어요 (${e::class.simpleName})."
+    else -> describeUnexpectedError(e, "요청에 실패했어요. 잠시 후 다시 시도해주세요.")
 })

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gamjungseoga.app.network.describeLoadError
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import kotlinx.coroutines.launch
@@ -33,7 +34,7 @@ class DiaryListViewModel : ViewModel() {
                 // created_at 최신순 정렬 (문자열이 ISO 8601이라 문자열 비교로도 시간순 정렬됨)
                 DiaryListState.Loaded(response.diaries.sortedByDescending { it.createdAt ?: "" })
             } catch (e: Exception) {
-                DiaryListState.Error(e.message ?: "일기 목록을 불러오지 못했어요.")
+                DiaryListState.Error(describeLoadError(e))
             }
         }
     }

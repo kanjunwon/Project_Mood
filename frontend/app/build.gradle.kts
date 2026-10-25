@@ -39,6 +39,8 @@ android {
 
     buildFeatures {
         compose = true
+        // ApiClient가 BuildConfig.DEBUG로 HTTP 로그 레벨을 나눈다.
+        buildConfig = true
     }
 }
 

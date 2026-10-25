@@ -6,11 +6,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gamjungseoga.app.network.describeUnexpectedError
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.network.DiaryGenerateRequest
 import com.gamjungseoga.app.network.DiaryGenerateResponse
 import com.gamjungseoga.app.network.SEOUL_ZONE
+import com.gamjungseoga.app.network.describeConnectionFailure
 import com.gamjungseoga.app.network.describeHttpException
 import com.gamjungseoga.app.network.extractDuplicateDiaryDetail
 import com.gamjungseoga.app.network.limitErrorMessageLength
@@ -323,10 +325,9 @@ private fun buildRequest(draft: DiaryDraft, overwrite: Boolean): DiaryGenerateRe
     )
 }
 
-// 개발 중 백엔드 연결 문제를 바로 알아볼 수 있게, 흔한 네트워크 예외를 원인이 드러나는 문구로 바꿔준다.
+// 흔한 네트워크 예외를 사용자용 문구로 바꿔준다. 연결 실패 원인(서버 주소 등)은 describeConnectionFailure가 Logcat에 남긴다.
 private fun describeError(e: Exception): String = limitErrorMessageLength(when (e) {
-    is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
-    is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
+    is UnknownHostException, is ConnectException -> describeConnectionFailure(e)
     is java.net.SocketTimeoutException, is TimeoutException ->
         "그림을 그리는 데 시간이 오래 걸리고 있어요. 다시 시도해주세요."
     is HttpException -> {
@@ -337,7 +338,7 @@ private fun describeError(e: Exception): String = limitErrorMessageLength(when (
             describeHttpException(e)
         }
     }
-    else -> e.message ?: "일기 생성에 실패했어요 (${e::class.simpleName})."
+    else -> describeUnexpectedError(e, "일기 생성에 실패했어요. 잠시 후 다시 시도해주세요.")
 })
 
 private val whenDateFormatter = DateTimeFormatter.ofPattern("M월 d일")

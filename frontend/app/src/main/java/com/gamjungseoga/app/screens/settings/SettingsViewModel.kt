@@ -5,10 +5,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gamjungseoga.app.network.describeLoadError
+import com.gamjungseoga.app.network.describeUnexpectedError
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.TokenStore
 import com.gamjungseoga.app.network.UserAccountResponse
 import com.gamjungseoga.app.network.UserStatsResponse
+import com.gamjungseoga.app.network.describeConnectionFailure
+import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.describeTimeout
+import com.gamjungseoga.app.network.limitErrorMessageLength
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -59,7 +65,7 @@ class SettingsViewModel : ViewModel() {
             accountState = try {
                 AccountState.Loaded(ApiClient.userApi.getAccount())
             } catch (e: Exception) {
-                AccountState.Error(e.message ?: "계정 정보를 불러오지 못했어요.")
+                AccountState.Error(describeLoadError(e))
             }
         }
     }
@@ -70,7 +76,7 @@ class SettingsViewModel : ViewModel() {
             statsState = try {
                 StatsState.Loaded(ApiClient.userApi.getStats())
             } catch (e: Exception) {
-                StatsState.Error(e.message ?: "통계를 불러오지 못했어요.")
+                StatsState.Error(describeLoadError(e))
             }
         }
     }
@@ -98,13 +104,9 @@ class SettingsViewModel : ViewModel() {
 }
 
 private fun describeDeleteAccountError(e: Exception): String = when (e) {
-    is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
-    is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
-    is SocketTimeoutException, is TimeoutException ->
-        "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
-    is HttpException -> {
-        val body = e.response()?.errorBody()?.string()?.take(300)
-        "서버 오류 (HTTP ${e.code()})" + if (!body.isNullOrBlank()) ": $body" else ""
-    }
-    else -> e.message ?: "계정 탈퇴에 실패했어요 (${e::class.simpleName})."
+    is UnknownHostException, is ConnectException -> describeConnectionFailure(e)
+    is SocketTimeoutException, is TimeoutException -> describeTimeout(e)
+    // 응답 본문을 그대로 붙이면 프록시의 HTML 에러 페이지가 노출될 수 있어서 공용 정리 함수를 거친다.
+    is HttpException -> limitErrorMessageLength(describeHttpException(e))
+    else -> describeUnexpectedError(e, "계정 탈퇴에 실패했어요. 잠시 후 다시 시도해주세요.")
 }

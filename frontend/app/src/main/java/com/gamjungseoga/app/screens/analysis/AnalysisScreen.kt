@@ -70,6 +70,7 @@ import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.emotion.EmotionGroup
 import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.emotion.emotionTextColorFor
+import com.gamjungseoga.app.network.describeLoadError
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DailyStatsResponse
 import com.gamjungseoga.app.network.EmotionDistributionItem
@@ -316,7 +317,7 @@ fun AnalysisScreen() {
                 date = selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
             )
         } catch (e: Exception) {
-            dailyError = e.message ?: "통계를 불러오지 못했어요."
+            dailyError = describeLoadError(e)
         } finally {
             dailyLoading = false
         }
@@ -352,7 +353,7 @@ fun AnalysisScreen() {
                 }.getOrNull()
             }
         } catch (e: Exception) {
-            monthlyError = e.message ?: "월간 통계를 불러오지 못했어요."
+            monthlyError = describeLoadError(e)
         } finally {
             monthlyLoading = false
         }

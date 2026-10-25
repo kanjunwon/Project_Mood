@@ -5,9 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gamjungseoga.app.network.describeUnexpectedError
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.UpdatePasswordRequest
+import com.gamjungseoga.app.network.describeConnectionFailure
 import com.gamjungseoga.app.network.describeHttpException
+import com.gamjungseoga.app.network.describeTimeout
 import com.gamjungseoga.app.network.extractDetailMessage
 import com.gamjungseoga.app.network.limitErrorMessageLength
 import java.net.ConnectException
@@ -73,10 +76,8 @@ class PasswordChangeViewModel : ViewModel() {
 }
 
 private fun describePasswordChangeError(e: Exception): String = limitErrorMessageLength(when (e) {
-    is UnknownHostException -> "서버 주소를 찾을 수 없어요 (${ApiClient.BASE_URL}). 백엔드가 켜져 있는지 확인해주세요."
-    is ConnectException -> "서버에 연결할 수 없어요 (${ApiClient.BASE_URL}). 백엔드 서버가 실행 중인지 확인해주세요."
-    is SocketTimeoutException, is TimeoutException ->
-        "서버 응답이 너무 오래 걸려요 (타임아웃). 백엔드가 응답하는지 확인해주세요."
+    is UnknownHostException, is ConnectException -> describeConnectionFailure(e)
+    is SocketTimeoutException, is TimeoutException -> describeTimeout(e)
     is HttpException -> {
         if (e.code() == 401) {
             val rawBody = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
@@ -85,5 +86,5 @@ private fun describePasswordChangeError(e: Exception): String = limitErrorMessag
             describeHttpException(e)
         }
     }
-    else -> e.message ?: "저장에 실패했어요 (${e::class.simpleName})."
+    else -> describeUnexpectedError(e, "저장에 실패했어요. 잠시 후 다시 시도해주세요.")
 })

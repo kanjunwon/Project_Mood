@@ -1,7 +1,12 @@
 package com.gamjungseoga.app.network
 
+import android.util.Log
 import com.google.gson.JsonParser
 import retrofit2.HttpException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.util.concurrent.TimeoutException
 
 // HttpException 응답 본문을 화면 메시지로 쓰기 전에 공통으로 다듬는 곳.
 // RunPod 프록시가 서버 기동 중일 때 502/503/504와 함께 HTML 에러 페이지를 그대로 내려주는 경우가 있어서,
@@ -80,6 +85,35 @@ fun describeHttpException(e: HttpException): String {
         statusCodeFallbackMessage(code)
     }
 }
+
+private const val TAG = "ApiError"
+
+// 연결 실패(UnknownHost/Connect)와 타임아웃은 사용자가 할 수 있는 게 "잠시 후 다시 시도"뿐이라,
+// 화면에는 일반 문구만 보여주고 원인(서버 주소, 예외 내용)은 Logcat에만 남긴다.
+fun describeConnectionFailure(e: Exception): String {
+    Log.w(TAG, "서버 연결 실패 (${ApiClient.BASE_URL})", e)
+    return "서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요."
+}
+
+fun describeTimeout(e: Exception): String {
+    Log.w(TAG, "서버 응답 타임아웃 (${ApiClient.BASE_URL})", e)
+    return "서버 응답이 늦어지고 있어요. 잠시 후 다시 시도해주세요."
+}
+
+// 위에서 분류되지 않은 예외(파싱 실패, NPE 등)는 e.message가 영어이거나 내부 정보라 화면에 그대로 보여주면 안 된다.
+// 실제 예외는 Logcat에만 남기고, 화면에는 호출부가 넘긴 일반 문구를 보여준다.
+fun describeUnexpectedError(e: Exception, userMessage: String): String {
+    Log.e(TAG, "예상하지 못한 오류", e)
+    return userMessage
+}
+
+// 목록/통계 조회처럼 화면이 "OO을 불러오지 못했어요. (원인)" 형태로 감싸서 보여주는 곳에서 쓰는 공용 원인 문구.
+fun describeLoadError(e: Exception): String = limitErrorMessageLength(when (e) {
+    is UnknownHostException, is ConnectException -> describeConnectionFailure(e)
+    is SocketTimeoutException, is TimeoutException -> describeTimeout(e)
+    is HttpException -> describeHttpException(e)
+    else -> describeUnexpectedError(e, "알 수 없는 오류가 발생했어요.")
+})
 
 // 화면에 표시되는 에러 메시지는 출처(서버 본문, 예외 메시지 등)에 상관없이 항상 이 함수를 거쳐서
 // 2~3줄을 넘지 않도록 길이를 제한한다.

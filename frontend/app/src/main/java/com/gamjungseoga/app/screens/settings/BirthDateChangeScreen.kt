@@ -11,6 +11,7 @@ fun BirthDateChangeScreen(
     onSaved: () -> Unit,
     viewModel: BirthDateViewModel = viewModel()
 ) {
+    val loadError = viewModel.loadState as? BirthDateLoadState.Error
     BirthDateScreen(
         title = "생년월일 변경",
         date = viewModel.date,
@@ -21,6 +22,9 @@ fun BirthDateChangeScreen(
         onConfirm = { viewModel.save(onSaved) },
         confirmButtonText = "변경하기",
         saving = viewModel.saveState is BirthDateSaveState.Loading,
-        errorMessage = (viewModel.saveState as? BirthDateSaveState.Error)?.message
+        errorMessage = loadError?.message ?: (viewModel.saveState as? BirthDateSaveState.Error)?.message,
+        // 현재 값을 불러오기 전/실패한 동안 저장하면 휠의 기본값으로 덮어써지므로 막아둔다.
+        confirmEnabled = viewModel.loadState is BirthDateLoadState.Loaded,
+        onRetry = if (loadError != null) viewModel::loadCurrentValue else null
     )
 }

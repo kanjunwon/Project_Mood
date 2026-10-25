@@ -1,5 +1,6 @@
 package com.gamjungseoga.app.network
 
+import com.gamjungseoga.app.BuildConfig
 import java.util.concurrent.TimeUnit
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -11,8 +12,10 @@ object ApiClient {
     // RunPod에 띄운 백엔드 서버 주소. 포드를 재시작하면 주소가 바뀔 수 있으니 그때마다 교체.
     const val BASE_URL = "https://ug6y88pdnvhvlt-8000.proxy.runpod.net/"
 
+    // BODY 레벨은 로그인 요청의 비밀번호와 Authorization 헤더의 토큰까지 Logcat에 찍으므로
+    // 디버그 빌드에서만 켠다.
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
     }
 
     // 로그인 전에는 토큰이 없으므로 당연히 헤더를 안 붙이지만, 회원가입/로그인 요청 자체는
@@ -60,7 +63,7 @@ object ApiClient {
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
         // OkHttp 기본 타임아웃(10초)은 /generate-diary가 LLaMA 일기 생성 -> KoBERT 감정분석 ->
-        // SD3 이미지 생성을 순차 실행하는 동안 기다리기엔 너무 짧아서 늘려둔다. 백엔드가 이미지
+        // SD3 이미지 생성을 순차 실행하는 동안 기다리기엔 너무 짧아서 늘려둔다. 백엔드가 이미지-
         // 프롬프트 변환 단계를 최적화해서 예전(120초를 넘겨 타임아웃 나던 수준, 그래서 한동안
         // readTimeout 240초/callTimeout 300초로 여유를 뒀었음)보다 훨씬 빨라졌고, 대신 앞단의
         // Cloudflare 프록시가 대략 100초에서 연결을 끊어버리므로 그보다 긴 타임아웃은 의미가 없다.

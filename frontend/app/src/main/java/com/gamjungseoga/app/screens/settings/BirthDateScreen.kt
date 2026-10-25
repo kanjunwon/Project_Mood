@@ -1,5 +1,6 @@
 package com.gamjungseoga.app.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
@@ -38,7 +40,10 @@ fun BirthDateScreen(
     onConfirm: () -> Unit,
     confirmButtonText: String = "변경하기",
     saving: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    confirmEnabled: Boolean = true,
+    // null이 아니면 에러 문구 아래에 "다시 불러오기"를 보여준다 (설정 화면의 불러오기 실패용).
+    onRetry: (() -> Unit)? = null
 ) {
     val years = remember(currentYear) { (1950..currentYear).toList() }
     val months = remember { (1..12).toList() }
@@ -96,12 +101,25 @@ fun BirthDateScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
+        if (onRetry != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "다시 불러오기",
+                style = MaterialTheme.typography.labelSmall,
+                color = TitleBrown,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .clickable(onClick = onRetry)
+            )
+        }
 
         Spacer(Modifier.height(48.dp))
 
         SettingsPrimaryButton(
             text = confirmButtonText,
             onClick = onConfirm,
+            enabled = confirmEnabled,
             loading = saving,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
