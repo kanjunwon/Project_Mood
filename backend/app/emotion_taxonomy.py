@@ -9,7 +9,7 @@
 # 그때그때 계산한다 (중분류는 저장하지 않음).
 
 # kobert_service.py에서:
-#     from app.constants.emotion_taxonomy import EMOTION_CATEGORIES, get_valence
+#     from app.emotion_taxonomy import EMOTION_CATEGORIES, get_valence
 # 사용하면 됨.
 
 # 소분류 24개 - KoBERT 모델의 실제 출력 클래스 (순서 고정, 바꾸면 안 됨)

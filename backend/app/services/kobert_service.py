@@ -8,9 +8,9 @@ MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
 def _mock_analyze() -> dict:
     return {
-        "top_emotion": "평온",
-        "scores": {"편안한": 1.0},
-        "sentiment_score": 0.3,
+        "top_emotion": "편안한",
+        "scores": {"편안한": 0.6, "감사한": 0.25, "뿌듯한": 0.15},
+        "sentiment_score": 1.0,
     }
 
 
