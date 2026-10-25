@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -139,6 +140,8 @@ fun DiaryGeneratingScreen(
         Image(
             painter = painterResource(R.drawable.header_illustration),
             contentDescription = null,
+            // 투명 배경의 흰색 선화라 밝은 배경에서 안 보여서 스플래시와 같이 갈색으로 칠함
+            colorFilter = ColorFilter.tint(TitleBrown),
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .padding(horizontal = 32.dp)
@@ -187,7 +190,10 @@ fun DiaryGeneratingScreen(
                     .fillMaxWidth()
                     .height(8.dp)
                     .clip(RoundedCornerShape(16.dp)),
-                color = SolidGreen
+                color = SolidGreen,
+                // 지정 안 하면 테마의 surfaceContainerHighest(머티리얼 기본 연보라)가 트랙에 깔려서
+                // 보라색처럼 보였음. 채워진 부분과 같은 초록을 옅게 깔아 톤을 맞춤.
+                trackColor = SolidGreen.copy(alpha = 0.2f)
             )
         }
         Spacer(Modifier.weight(1f))

@@ -43,9 +43,13 @@ import com.gamjungseoga.app.ui.theme.PretendardFontFamily
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import java.time.LocalDate
 
-private val diaryWhoOptions = listOf(
-    "가족", "남매", "친구", "남성친구", "여성친구", "연인",
-    "반려동물", "강아지", "고양이", "자녀", "엄마", "아빠", "형제", "혼자"
+// 피그마처럼 관계별 묶음(가족 / 친구·연인 / 반려동물 / 혼자)으로 나눠서, 묶음마다 새 줄에서 시작하게 함.
+// 묶음 안에서는 화면 폭에 따라 자동 줄바꿈.
+private val diaryWhoOptionGroups = listOf(
+    listOf("가족", "엄마", "아빠", "형제", "남매", "자녀"),
+    listOf("친구", "연인", "남성친구", "여성친구"),
+    listOf("반려동물", "강아지", "고양이"),
+    listOf("혼자")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -98,12 +102,16 @@ fun DiaryWhoScreen(
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                diaryWhoOptions.forEach { option ->
-                    WhoChip(label = option, selected = option in selected, onClick = { onToggle(option) })
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                diaryWhoOptionGroups.forEach { group ->
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        group.forEach { option ->
+                            WhoChip(label = option, selected = option in selected, onClick = { onToggle(option) })
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
