@@ -42,7 +42,8 @@ fun DiaryCompleteScreen(
     val emotionBars = remember(result) { topEmotionBarsFromScores(result?.emotionScores) }
     val topEmotionPercent = emotionBars.firstOrNull()?.percent ?: 0
     val whoDisplay = draft.who.firstOrNull() ?: draft.whoCustom.ifBlank { "혼자" }
-    val whereDisplay = draft.where.ifBlank { "기록된 장소 없음" }
+    // 장소가 비어 있으면 카드를 숨김 (DiaryDetailScreen과 같은 처리) - "기록된 장소 없음이에요" 방지
+    val whereDisplay = draft.where.ifBlank { null }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -115,13 +116,15 @@ fun DiaryCompleteScreen(
                     highlight = whoDisplay,
                     fontFamily = PretendardFontFamily
                 )
-                PersonPlaceInfoCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.analysis_location_icon,
-                    prefix = "오늘 방문한 장소는",
-                    highlight = whereDisplay,
-                    fontFamily = PretendardFontFamily
-                )
+                if (whereDisplay != null) {
+                    PersonPlaceInfoCard(
+                        modifier = Modifier.weight(1f),
+                        iconRes = R.drawable.analysis_location_icon,
+                        prefix = "오늘 방문한 장소는",
+                        highlight = whereDisplay,
+                        fontFamily = PretendardFontFamily
+                    )
+                }
             }
         }
     }

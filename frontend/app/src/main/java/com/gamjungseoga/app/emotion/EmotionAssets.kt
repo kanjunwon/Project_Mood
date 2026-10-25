@@ -3,6 +3,8 @@ package com.gamjungseoga.app.emotion
 import android.util.Log
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import com.gamjungseoga.app.R
 import com.gamjungseoga.app.ui.theme.EmotionActive
 import com.gamjungseoga.app.ui.theme.EmotionDrained
@@ -41,6 +43,19 @@ private const val TAG = "EmotionAssets"
 
 // 리컴포지션마다 불려서, 같은 라벨은 한 번만 로그를 남긴다.
 private val loggedUnknownEmotions = ConcurrentHashMap.newKeySet<String>()
+
+// 감정 색을 흰 배경 위 "글자"로 쓸 때용. 안정형 연두/해소형 민트처럼 연한 색은 글자로는 읽기 어려워서,
+// 흰 배경 대비 3:1(굵은 글씨 기준 최소 대비)이 될 때까지 같은 색을 조금씩 어둡게 한다. 원래 진한 색은 그대로.
+fun emotionTextColorFor(emotion: String?): Color {
+    var color = emotionColorFor(emotion)
+    repeat(10) {
+        if (contrastOnWhite(color) >= 3f) return color
+        color = lerp(color, Color.Black, 0.1f)
+    }
+    return color
+}
+
+private fun contrastOnWhite(color: Color): Float = 1.05f / (color.luminance() + 0.05f)
 
 // 감정 이름 -> 그룹 색. 순위가 아니라 감정 자체로 색이 정해진다.
 // 매핑에 없는 라벨이 오면 EmotionUnknown을 돌려주고 경고 로그를 남긴다(백엔드 라벨이 바뀐 걸

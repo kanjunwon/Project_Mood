@@ -42,6 +42,8 @@ import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.HighlightMint
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
+import com.gamjungseoga.app.util.Josa
+import com.gamjungseoga.app.util.josaFor
 
 // 일기 생성 완료/상세보기/분석(일간) 화면이 모두 같은 모양의 "감정 리포트" 위젯 묶음(히어로 이미지+뱃지,
 // 오늘의 대표 감정 카드, 주요 감정 막대 카드, 사람/장소 카드)을 쓰므로 여기 한 곳에 모아 공유한다.
@@ -237,15 +239,15 @@ fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, mo
     }
 }
 
-// "오늘 함께한 사람은/오늘 방문한 장소는 OO에요" 카드. 위에 아이콘, 아래 강조 텍스트.
+// "오늘 함께한 사람은/오늘 방문한 장소는 OO예요(이에요)" 카드. 위에 아이콘, 아래 강조 텍스트.
+// highlight는 사용자 입력이라 받침에 따라 "예요/이에요"를 고른다.
 @Composable
 fun PersonPlaceInfoCard(
     modifier: Modifier = Modifier,
     iconRes: Int,
     prefix: String,
     highlight: String,
-    fontFamily: FontFamily,
-    suffix: String = "에요"
+    fontFamily: FontFamily
 ) {
     Surface(
         modifier = modifier,
@@ -269,7 +271,7 @@ fun PersonPlaceInfoCard(
                     withStyle(SpanStyle(color = HighlightMint, fontWeight = FontWeight.Bold)) {
                         append(highlight)
                     }
-                    append(suffix)
+                    append(josaFor(highlight, Josa.COPULA))
                 },
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = fontFamily),
                 color = Color.Black
