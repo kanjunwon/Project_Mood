@@ -10,9 +10,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +25,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,7 +49,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -162,8 +166,11 @@ private fun DiaryEntry.toDiaryPage(index: Int): DiaryPage {
 // 가운데(현재 페이지) 기준 크기, 옆 페이지는 이 크기에서 축소됨
 private const val PAGE_CARD_MIN_SCALE = 0.73f
 private const val PAGE_CARD_MAX_SCALE = 1f
-private val PAGE_CARD_BASE_WIDTH = 258.dp
-private val PAGE_CARD_BASE_HEIGHT = 354.dp
+// 가운데 카드는 화면 폭의 60%, 나머지를 양옆 카드가 나눠 보여줌(피그마 캐러셀 비율).
+// 세로는 피그마 카드 비율(258x354)을 유지하되, 남은 세로 공간보다 크면 비율 그대로 같이 줄인다.
+private const val PAGE_CARD_WIDTH_FRACTION = 0.6f
+private const val PAGE_CARD_ASPECT_RATIO = 258f / 354f
+private val PAGE_CARD_SPACING = 8.dp
 private val PAGE_CARD_RIBBON_OVERHANG = 6.dp
 
 // 책갈피(리본) 모양: 위/양옆은 각지고, 아래쪽 가운데가 V자로 파인 형태
@@ -212,89 +219,113 @@ fun HomeScreen(
             .orEmpty()
     }
 
-    // 배경(바탕색+텍스처)은 MainActivity의 전체 배경 레이어가 담당하므로 여기서는 따로 안 채움
-    LazyColumn(
+    // 배경(바탕색+텍스처)은 MainActivity의 전체 배경 레이어가 담당하므로 여기서는 따로 안 채움.
+    // 홈은 세로 스크롤 없이 한 화면에 들어가는 구조: 헤더/나의 감정은 내용만큼, "최근 작성한 페이지"가
+    // 남은 높이를 전부 받고 그 안에서 카드 크기를 정한다(카드가 탭바 아래로 밀려 잘리지 않게).
+    Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        item { HomeHeader() }
+        HomeHeader()
 
-        item {
-            Column(modifier = Modifier.padding(top = 24.dp)) {
-                SectionTitle("나의 감정")
-                Spacer(Modifier.height(16.dp))
-                when {
-                    listState is DiaryListState.Loading -> Text(
-                        "불러오는 중...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MonthLabelGray,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    listState is DiaryListState.Error -> Text(
-                        "감정 기록을 불러오지 못했어요. (${listState.message})",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MonthLabelGray,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    else -> {
-                        val monthlyEmotions = remember(listState) {
-                            computeMonthlyEmotions((listState as DiaryListState.Loaded).diaries)
-                        }
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(18.dp)
-                        ) {
-                            itemsIndexed(monthlyEmotions) { index, item ->
-                                MonthlyEmotionCard(item, index)
-                            }
+        Column(modifier = Modifier.padding(top = 24.dp)) {
+            SectionTitle("나의 감정")
+            Spacer(Modifier.height(16.dp))
+            when {
+                listState is DiaryListState.Loading -> Text(
+                    "불러오는 중...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MonthLabelGray,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                listState is DiaryListState.Error -> Text(
+                    "감정 기록을 불러오지 못했어요. (${listState.message})",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MonthLabelGray,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                else -> {
+                    val monthlyEmotions = remember(listState) {
+                        computeMonthlyEmotions((listState as DiaryListState.Loaded).diaries)
+                    }
+                    // 카드 3장 고정이라 Lazy 대신 Row로 두고, IntrinsicSize.Min으로 가장 긴 카드에
+                    // 높이를 맞춘다(감정 이름이 길어 한 장만 줄바꿈돼도 세 장 높이가 같게).
+                    // 세로 padding은 카드 위/아래로 걸치는 장식(테이프/점/파란 조각) 자리.
+                    Row(
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .height(IntrinsicSize.Min)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        monthlyEmotions.forEachIndexed { index, item ->
+                            MonthlyEmotionCard(item, index)
                         }
                     }
                 }
             }
         }
 
-        item {
-            Column(modifier = Modifier.padding(top = 28.dp, bottom = 20.dp)) {
-                SectionTitle("최근 작성한 페이지")
-                Spacer(Modifier.height(12.dp))
-                when {
-                    listState is DiaryListState.Loading -> Text(
-                        "불러오는 중...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MonthLabelGray,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    listState is DiaryListState.Error -> Text(
-                        "일기 목록을 불러오지 못했어요. (${listState.message})",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MonthLabelGray,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    recentPages.isEmpty() -> Text(
-                        "아직 작성한 일기가 없어요.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MonthLabelGray,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    else -> {
-                        val pagesListState = rememberLazyListState()
-                        val density = LocalDensity.current
-                        BoxWithConstraints {
-                            val viewportWidthPx = with(density) { maxWidth.toPx() }
-                            val centerCardWidthPx = with(density) { PAGE_CARD_BASE_WIDTH.toPx() }
-                            // 화면 로드 시 가운데(현재 페이지, index 1)가 뷰포트 정중앙에 오도록 초기 스크롤 위치 계산
-                            LaunchedEffect(recentPages) {
-                                val centerIndex = (recentPages.size - 1).coerceAtMost(1)
-                                val offsetPx = ((viewportWidthPx - centerCardWidthPx) / 2f).toInt()
-                                pagesListState.scrollToItem(index = centerIndex, scrollOffset = -offsetPx)
-                            }
-                            LazyRow(
-                                state = pagesListState,
-                                contentPadding = PaddingValues(horizontal = 40.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                itemsIndexed(recentPages) { index, page ->
-                                    DiaryPageCard(page, index, pagesListState, onClick = { onDiaryClick(page.id) })
-                                }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(top = 20.dp, bottom = 16.dp)
+        ) {
+            SectionTitle("최근 작성한 페이지")
+            Spacer(Modifier.height(12.dp))
+            when {
+                listState is DiaryListState.Loading -> Text(
+                    "불러오는 중...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MonthLabelGray,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                listState is DiaryListState.Error -> Text(
+                    "일기 목록을 불러오지 못했어요. (${listState.message})",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MonthLabelGray,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                recentPages.isEmpty() -> Text(
+                    "아직 작성한 일기가 없어요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MonthLabelGray,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                else -> {
+                    val pagesListState = rememberLazyListState()
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        val maxCardHeight = (maxHeight - PAGE_CARD_RIBBON_OVERHANG).coerceAtLeast(0.dp)
+                        val cardWidth = minOf(maxWidth * PAGE_CARD_WIDTH_FRACTION, maxCardHeight * PAGE_CARD_ASPECT_RATIO)
+                        val cardHeight = cardWidth / PAGE_CARD_ASPECT_RATIO
+                        // 좌우 여백을 (화면 폭 - 카드 폭)/2로 두면, 어떤 카드든 스크롤 오프셋 0일 때 정중앙에 온다
+                        // (첫/마지막 카드도 가운데까지 끌어올 수 있음).
+                        val sidePadding = ((maxWidth - cardWidth) / 2).coerceAtLeast(0.dp)
+                        // 화면 로드 시 가운데(현재 페이지, index 1)가 뷰포트 정중앙에 오도록 초기 스크롤
+                        LaunchedEffect(recentPages) {
+                            val centerIndex = (recentPages.size - 1).coerceAtMost(1)
+                            pagesListState.scrollToItem(index = centerIndex)
+                        }
+                        LazyRow(
+                            state = pagesListState,
+                            contentPadding = PaddingValues(horizontal = sidePadding),
+                            horizontalArrangement = Arrangement.spacedBy(PAGE_CARD_SPACING),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            itemsIndexed(recentPages) { index, page ->
+                                DiaryPageCard(
+                                    page = page,
+                                    index = index,
+                                    listState = pagesListState,
+                                    baseWidth = cardWidth,
+                                    baseHeight = cardHeight,
+                                    onClick = { onDiaryClick(page.id) }
+                                )
                             }
                         }
                     }
@@ -379,20 +410,28 @@ private fun SectionTitle(text: String) {
     )
 }
 
+// 높이는 114dp 고정이 아니라 최소값: 그림(58dp) 아래 "N월의 감정"/"감정 N회 기록" 두 줄이 글꼴 크기
+// 설정과 상관없이 잘리지 않도록 내용만큼 늘어난다. 세 장 높이는 부모 Row(IntrinsicSize.Min)가 맞춰줌.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MonthlyEmotionCard(item: MonthlyEmotion, index: Int) {
-    Box(modifier = Modifier.size(114.dp)) {
+    Box(
+        modifier = Modifier
+            .width(114.dp)
+            .heightIn(min = 114.dp)
+            .fillMaxHeight()
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(CardBackground)
-                .padding(start = 7.dp, top = 8.dp, end = 7.dp)
+                .padding(start = 7.dp, top = 8.dp, end = 7.dp, bottom = 8.dp)
         ) {
             // 사진 영역: imageUrl(SD3 생성 결과) 있으면 그걸, 없으면 샘플 일러스트, 둘 다 없으면 배경만
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(65.dp)
+                    .height(58.dp)
             ) {
                 if (item.imageUrl != null) {
                     // 로딩 중/실패 시 샘플 일러스트(imageRes)가 있으면 그걸 보여주고, 없으면
@@ -415,12 +454,25 @@ private fun MonthlyEmotionCard(item: MonthlyEmotion, index: Int) {
                     )
                 }
             }
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(6.dp))
             Text(item.month, style = MaterialTheme.typography.labelSmall, color = MonthLabelGray)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(item.emotion, style = MaterialTheme.typography.titleSmall, color = TitleBrown)
-                Spacer(Modifier.width(4.dp))
-                Text(item.count, style = MaterialTheme.typography.labelSmall, color = CountLabelBrown)
+            Spacer(Modifier.height(2.dp))
+            // 감정 이름이 길면 "N회 기록"이 글자 단위로 쪼개져 잘리지 않고 통째로 다음 줄로 내려가게 FlowRow 사용
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    item.emotion,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TitleBrown,
+                    modifier = Modifier.alignByBaseline()
+                )
+                Text(
+                    item.count,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CountLabelBrown,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.alignByBaseline()
+                )
             }
         }
 
@@ -433,25 +485,30 @@ private fun MonthlyEmotionCard(item: MonthlyEmotion, index: Int) {
     }
 }
 
+// 장식은 카드 Box 위에 그려서 그림/텍스트보다 앞에 오고, 카드 경계 밖으로 걸치는 부분은 부모 Row의
+// 세로 padding(8dp) 안에 들어가게 크기/오프셋을 잡는다.
 @Composable
 private fun BoxScope.OrangeTapeAccent() {
+    // 카드 상단 가운데에 가로로 붙인 마스킹테이프: 절반은 카드 위, 절반은 카드 밖으로 걸침.
+    // 테이프 느낌을 위해 살짝 반투명하게 해서 아래 그림이 비치게 함.
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .offset(y = (-4).dp)
-            .size(width = 34.dp, height = 8.dp)
-            .background(AccentOrange, RoundedCornerShape(2.dp))
+            .offset(y = (-7).dp)
+            .size(width = 44.dp, height = 14.dp)
+            .background(AccentOrange.copy(alpha = 0.9f), RoundedCornerShape(1.dp))
     )
 }
 
 @Composable
 private fun BoxScope.BlueCornerAccents() {
     // 피그마 실측(9.9x57.6px, rotate 39.94deg): 폭 넓은 막대가 아니라 가늘고 긴 조각이
-    // 40도 정도 기울어 모서리에 살짝 걸쳐있는 모양(리본/종이 접힘 느낌)
+    // 40도 정도 기울어 모서리에 비스듬히 걸쳐있는 모양(사진 모서리 테이프 느낌).
+    // 조각 중심이 카드 모서리 꼭짓점에 오도록 오프셋 = -(조각 크기 / 2).
     Box(
         modifier = Modifier
             .align(Alignment.TopStart)
-            .offset(x = 2.dp, y = (-6).dp)
+            .offset(x = (-2).dp, y = (-11).dp)
             .size(width = 4.dp, height = 22.dp)
             .graphicsLayer { rotationZ = 40f }
             .background(AccentBlue, RoundedCornerShape(1.dp))
@@ -459,7 +516,7 @@ private fun BoxScope.BlueCornerAccents() {
     Box(
         modifier = Modifier
             .align(Alignment.BottomEnd)
-            .offset(x = (-2).dp, y = 6.dp)
+            .offset(x = 2.dp, y = 11.dp)
             .size(width = 4.dp, height = 22.dp)
             .graphicsLayer { rotationZ = 40f }
             .background(AccentBlue, RoundedCornerShape(1.dp))
@@ -468,22 +525,30 @@ private fun BoxScope.BlueCornerAccents() {
 
 @Composable
 private fun BoxScope.GreenDotAccent() {
-    // 피그마 기준 카드 위쪽 가운데, 상단 경계에 걸치는 위치
+    // 카드 위쪽 가운데, 상단 경계에 절반 걸치는 스티커 점
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .offset(y = (-7).dp)
-            .size(14.dp)
+            .offset(y = (-8).dp)
+            .size(16.dp)
             .background(AccentGreen, CircleShape)
     )
 }
 
+// baseWidth/baseHeight: 가운데(scale 1)일 때 크기. 홈 화면 남은 공간에서 계산해서 넘겨줌.
 @Composable
-private fun DiaryPageCard(page: DiaryPage, index: Int, listState: LazyListState, onClick: () -> Unit) {
+private fun DiaryPageCard(
+    page: DiaryPage,
+    index: Int,
+    listState: LazyListState,
+    baseWidth: Dp,
+    baseHeight: Dp,
+    onClick: () -> Unit
+) {
     // 실제 레이아웃 크기 자체를 바꿔서 이웃 카드가 가려지지 않고 옆으로 밀려나게 함
     val scale = centerScale(listState, index)
-    val cardWidth = PAGE_CARD_BASE_WIDTH * scale
-    val cardHeight = PAGE_CARD_BASE_HEIGHT * scale
+    val cardWidth = baseWidth * scale
+    val cardHeight = baseHeight * scale
 
     // 바깥 Box에 책갈피가 튀어나올 여유 공간(overhang)을 위쪽에 미리 확보해둠 (LazyRow가 넘치는 부분을 잘라내는 것 방지)
     Box(

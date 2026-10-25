@@ -1,5 +1,6 @@
 package com.gamjungseoga.app.screens.profilecustomize
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,8 +18,9 @@ import androidx.compose.ui.unit.dp
 import com.gamjungseoga.app.screens.settings.ResultValueBox
 import com.gamjungseoga.app.screens.settings.SettingsPrimaryButton
 import com.gamjungseoga.app.screens.settings.SettingsSubScreenTopBar
-import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
+import com.gamjungseoga.app.ui.theme.SolidGreen
+import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 
 // 이미지 커스터마이징 4단계를 모두 고른 뒤 보여주는 요약 화면. 선택값은 결과 표시용이라
@@ -78,12 +80,15 @@ fun ProfileCustomizeCompleteScreen(
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // 보조 버튼: 1단계로 돌아가는 항상 누를 수 있는 동작이라 회색(비활성처럼 보임) 대신
+            // 흰 배경 + 진한 초록 테두리/글씨로 "확인하기"(초록 채움)와 구분한다.
             SettingsPrimaryButton(
                 text = "변경하기",
                 onClick = onEditAgain,
                 enabled = !saving,
-                color = CalendarCellGray,
-                contentColor = MonthLabelGray,
+                color = SurfaceColor,
+                contentColor = SolidGreen,
+                border = BorderStroke(1.dp, SolidGreen),
                 modifier = Modifier.weight(1f)
             )
             SettingsPrimaryButton(

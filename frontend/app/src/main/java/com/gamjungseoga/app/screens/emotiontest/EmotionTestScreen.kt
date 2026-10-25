@@ -1,7 +1,6 @@
 package com.gamjungseoga.app.screens.emotiontest
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,15 +25,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.gamjungseoga.app.components.StepProgressRow
+import com.gamjungseoga.app.screens.settings.SelectableOptionButton
 import com.gamjungseoga.app.ui.theme.ButtonMint
-import com.gamjungseoga.app.ui.theme.CalendarCellGray
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
-import com.gamjungseoga.app.ui.theme.NavInactiveGray
+import com.gamjungseoga.app.ui.theme.SolidGreen
 import com.gamjungseoga.app.ui.theme.TitleBrown
 
 @Composable
@@ -61,13 +57,13 @@ fun EmotionTestScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         EmotionTestTopBar(onBack = onBack)
         Spacer(Modifier.height(24.dp))
-        EmotionTestProgressRow(
-            index = index,
+        StepProgressRow(
+            current = index + 1,
             total = total,
-            onPrev = onPrev,
-            onNext = onNext,
-            canGoPrev = index > 0 && !isSubmitting,
-            canGoNext = index < total - 1 && selectedAnswer != null && !isSubmitting
+            onPrev = onPrev.takeIf { index > 0 && !isSubmitting },
+            onNext = onNext.takeIf { index < total - 1 && selectedAnswer != null && !isSubmitting },
+            prevContentDescription = "이전 문항",
+            nextContentDescription = "다음 문항"
         )
         Spacer(Modifier.height(40.dp))
         Text(
@@ -87,11 +83,14 @@ fun EmotionTestScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             emotionTestAnswerOptions.forEach { (label, value) ->
-                EmotionTestOption(
-                    label = label,
+                SelectableOptionButton(
+                    text = label,
                     selected = selectedAnswer == value,
                     enabled = !isSubmitting,
-                    onClick = { onAnswerSelected(value) }
+                    onClick = { onAnswerSelected(value) },
+                    selectedColor = SolidGreen,
+                    height = 52.dp,
+                    textStyle = MaterialTheme.typography.titleMedium
                 )
             }
         }
@@ -155,68 +154,6 @@ private fun EmotionTestTopBar(onBack: (() -> Unit)?) {
                 .align(Alignment.TopCenter)
                 .padding(top = 49.dp)
         )
-    }
-}
-
-@Composable
-private fun EmotionTestProgressRow(
-    index: Int,
-    total: Int,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-    canGoPrev: Boolean,
-    canGoNext: Boolean
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onPrev, enabled = canGoPrev) {
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "이전 문항",
-                tint = if (canGoPrev) NavInactiveGray else NavInactiveGray.copy(alpha = 0.3f)
-            )
-        }
-        Spacer(Modifier.width(16.dp))
-        Text(
-            buildAnnotatedString {
-                withStyle(SpanStyle(color = TitleBrown)) { append("${index + 1}") }
-                withStyle(SpanStyle(color = NavInactiveGray)) { append("/$total") }
-            },
-            style = MaterialTheme.typography.headlineSmall
-        )
-        Spacer(Modifier.width(16.dp))
-        IconButton(onClick = onNext, enabled = canGoNext) {
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "다음 문항",
-                tint = if (canGoNext) NavInactiveGray else NavInactiveGray.copy(alpha = 0.3f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun EmotionTestOption(label: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        color = if (selected) ButtonMint else Color.White,
-        shape = RoundedCornerShape(16.dp),
-        border = if (selected) null else BorderStroke(1.dp, CalendarCellGray),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                label,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (selected) Color.White else MonthLabelGray
-            )
-        }
     }
 }
 

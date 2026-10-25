@@ -15,6 +15,8 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -23,6 +25,8 @@ sealed interface EmotionTestSubmitState {
     data object Submitting : EmotionTestSubmitState
     data class Error(val message: String) : EmotionTestSubmitState
 }
+
+private const val SELECTION_FEEDBACK_MILLIS = 250L
 
 class EmotionTestViewModel : ViewModel() {
     var currentIndex by mutableIntStateOf(0)
@@ -43,10 +47,26 @@ class EmotionTestViewModel : ViewModel() {
     }
 
     fun goNext() {
+        advanceJob?.cancel()
         if (currentIndex < emotionTestQuestions.lastIndex) currentIndex++
     }
 
+    // 답을 고르자마자 다음 문항으로 넘기면 같은 자리 버튼이 바로 새 문항(미선택)으로 바뀌어서, 손을 뗀 뒤
+    // 선택 색이 보이지 않는다. 잠깐 선택 색을 보여준 뒤 넘긴다. 그 사이 이전 화살표 등으로 문항이
+    // 바뀌었으면 넘기지 않고, 다른 답을 다시 누르면 대기 시간을 새로 시작한다.
+    private var advanceJob: Job? = null
+
+    fun goNextAfterSelectionFeedback() {
+        advanceJob?.cancel()
+        val fromIndex = currentIndex
+        advanceJob = viewModelScope.launch {
+            delay(SELECTION_FEEDBACK_MILLIS)
+            if (currentIndex == fromIndex) goNext()
+        }
+    }
+
     fun goPrev() {
+        advanceJob?.cancel()
         if (currentIndex > 0) currentIndex--
     }
 

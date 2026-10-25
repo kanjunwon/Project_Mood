@@ -344,7 +344,7 @@ fun GamjeongseogaApp() {
                                 // 재시도 버튼을 화면이 보여줌 - 강제/설정 진입 모두 동일).
                                 emotionTestViewModel.submit(onSuccess = onSubmitSuccess)
                             } else {
-                                emotionTestViewModel.goNext()
+                                emotionTestViewModel.goNextAfterSelectionFeedback()
                             }
                         },
                         // 강제 진입이면 뒤로가기 버튼을 숨기고(onBack = null) 시스템 뒤로가기도 막는다.

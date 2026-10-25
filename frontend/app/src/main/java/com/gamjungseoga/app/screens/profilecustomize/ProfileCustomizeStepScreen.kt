@@ -2,25 +2,18 @@ package com.gamjungseoga.app.screens.profilecustomize
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.gamjungseoga.app.components.StepProgressRow
 import com.gamjungseoga.app.screens.settings.SelectableOptionButton
 import com.gamjungseoga.app.screens.settings.SettingsSubScreenTopBar
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
@@ -49,27 +42,14 @@ fun ProfileCustomizeStepScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            StepIndicator(step = step, totalSteps = totalSteps)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StepArrowButton(
-                    icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    onClick = onPrevStep,
-                    contentDescription = "이전 단계"
-                )
-                StepArrowButton(
-                    icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    onClick = onNextStep,
-                    contentDescription = "다음 단계"
-                )
-            }
-        }
+        StepProgressRow(
+            current = step,
+            total = totalSteps,
+            onPrev = onPrevStep,
+            onNext = onNextStep,
+            prevContentDescription = "이전 단계",
+            nextContentDescription = "다음 단계"
+        )
 
         Spacer(Modifier.weight(1f))
 
@@ -112,24 +92,5 @@ fun ProfileCustomizeStepScreen(
         }
 
         Spacer(Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun StepIndicator(step: Int, totalSteps: Int) {
-    Row(verticalAlignment = Alignment.Bottom) {
-        Text("$step", style = MaterialTheme.typography.headlineSmall, color = TitleBrown)
-        Text("/$totalSteps", style = MaterialTheme.typography.bodyMedium, color = MonthLabelGray)
-    }
-}
-
-@Composable
-private fun StepArrowButton(icon: ImageVector, onClick: (() -> Unit)?, contentDescription: String) {
-    IconButton(onClick = { onClick?.invoke() }, enabled = onClick != null) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = if (onClick != null) TitleBrown else TitleBrown.copy(alpha = 0.3f)
-        )
     }
 }
