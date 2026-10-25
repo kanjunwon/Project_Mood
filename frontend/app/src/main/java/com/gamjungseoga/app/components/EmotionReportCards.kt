@@ -1,5 +1,6 @@
 package com.gamjungseoga.app.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -8,8 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -33,9 +38,9 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.gamjungseoga.app.R
 import com.gamjungseoga.app.emotion.drawableForEmotion
 import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.ui.theme.BodyGray
@@ -109,13 +114,47 @@ fun EmotionBadge(topEmotion: String, modifier: Modifier = Modifier) {
     }
 }
 
+// 요약 카드 왼쪽의 원 세 개(큰 원 = 1위, 오른쪽 위 중간 원 = 2위, 왼쪽 작은 원 = 3위).
+// 위치/크기는 예전에 쓰던 원 세 개 이미지(305x218px)를 88x63dp에 맞춰 환산한 값.
+// 순위 감정이 3개보다 적으면 빈 순위의 원은 그리지 않는다.
+@Composable
+private fun TopEmotionCircles(rankColors: List<Color>) {
+    Box(modifier = Modifier.size(width = 88.dp, height = 63.dp)) {
+        rankColors.getOrNull(0)?.let { color ->
+            Box(Modifier.offset(x = 15.dp, y = 17.dp).size(45.dp).background(color, CircleShape))
+        }
+        rankColors.getOrNull(1)?.let { color ->
+            Box(Modifier.offset(x = 60.dp).size(27.dp).background(color, CircleShape))
+        }
+        rankColors.getOrNull(2)?.let { color ->
+            Box(Modifier.offset(y = 11.dp).size(11.dp).background(color, CircleShape))
+        }
+    }
+}
+
+// 사람/장소 카드의 원형 아이콘. 원 배경은 감정 색, 그 위 글리프(투명 배경 PNG)는 같은 색을 어둡게 칠해서
+// 원래 아이콘(민트 원 + 진한 민트 그림)과 같은 톤 구성을 유지한다.
+@Composable
+fun EmotionIconCircle(@DrawableRes glyphRes: Int, color: Color, size: Dp, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.size(size).background(color, CircleShape)) {
+        Image(
+            painter = painterResource(glyphRes),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(lerp(color, Color.Black, 0.3f)),
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
 // "오늘(이번 달) 가장 많이 느낀 감정은 OO이에요 / 전체 감정 중 N%를 차지했어요" 카드.
 // titlePrefix는 끝에 줄바꿈까지 포함해서 넘긴다 (예: "오늘 가장 많이 느낀 감정은\n").
+// rankColors는 상위 3개 감정의 색(1위부터). 비어 있으면 대표 감정 색 하나로 큰 원만 칠한다.
 @Composable
 fun EmotionSummaryCard(
     titlePrefix: String,
     emotion: String,
     percent: Int,
+    rankColors: List<Color>,
     fontFamily: FontFamily,
     modifier: Modifier = Modifier,
     emotionColor: Color = emotionColorFor(emotion)
@@ -129,11 +168,7 @@ fun EmotionSummaryCard(
             modifier = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Image(
-                painter = painterResource(R.drawable.analysis_top_emotion_circles),
-                contentDescription = null,
-                modifier = Modifier.size(width = 88.dp, height = 63.dp)
-            )
+            TopEmotionCircles(rankColors.ifEmpty { listOf(emotionColor) })
             Spacer(Modifier.width(16.dp))
             Column {
                 Text(
@@ -241,10 +276,12 @@ fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, mo
 
 // "오늘 함께한 사람은/오늘 방문한 장소는 OO예요(이에요)" 카드. 위에 아이콘, 아래 강조 텍스트.
 // highlight는 사용자 입력이라 받침에 따라 "예요/이에요"를 고른다.
+// iconRes는 글리프만 있는 아이콘(analysis_*_glyph), emotionColor는 그 사람/장소와 연관된 대표 감정 색.
 @Composable
 fun PersonPlaceInfoCard(
     modifier: Modifier = Modifier,
     iconRes: Int,
+    emotionColor: Color,
     prefix: String,
     highlight: String,
     fontFamily: FontFamily
@@ -255,11 +292,7 @@ fun PersonPlaceInfoCard(
         shape = RoundedCornerShape(23.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(40.dp)
-            )
+            EmotionIconCircle(glyphRes = iconRes, color = emotionColor, size = 40.dp)
             Spacer(Modifier.height(12.dp))
             Text(
                 prefix,

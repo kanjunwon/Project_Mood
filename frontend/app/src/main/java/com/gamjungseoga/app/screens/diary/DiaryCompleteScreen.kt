@@ -25,6 +25,7 @@ import com.gamjungseoga.app.components.EmotionSummaryCard
 import com.gamjungseoga.app.components.PersonPlaceInfoCard
 import com.gamjungseoga.app.components.TopEmotionsBarCard
 import com.gamjungseoga.app.components.topEmotionBarsFromScores
+import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryGenerateResponse
 import com.gamjungseoga.app.ui.theme.DiaryBodyTextStyle
@@ -94,6 +95,7 @@ fun DiaryCompleteScreen(
                 titlePrefix = "오늘 가장 많이 느낀 감정은\n",
                 emotion = topEmotion,
                 percent = topEmotionPercent,
+                rankColors = emotionBars.map { it.color },
                 fontFamily = PretendardFontFamily
             )
         }
@@ -111,7 +113,8 @@ fun DiaryCompleteScreen(
             ) {
                 PersonPlaceInfoCard(
                     modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.analysis_person_icon,
+                    iconRes = R.drawable.analysis_person_glyph,
+                    emotionColor = emotionColorFor(topEmotion),
                     prefix = "오늘 함께한 사람은",
                     highlight = whoDisplay,
                     fontFamily = PretendardFontFamily
@@ -119,7 +122,8 @@ fun DiaryCompleteScreen(
                 if (whereDisplay != null) {
                     PersonPlaceInfoCard(
                         modifier = Modifier.weight(1f),
-                        iconRes = R.drawable.analysis_location_icon,
+                        iconRes = R.drawable.analysis_location_glyph,
+                        emotionColor = emotionColorFor(topEmotion),
                         prefix = "오늘 방문한 장소는",
                         highlight = whereDisplay,
                         fontFamily = PretendardFontFamily

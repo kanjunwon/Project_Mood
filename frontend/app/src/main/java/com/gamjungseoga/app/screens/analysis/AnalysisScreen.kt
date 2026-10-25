@@ -1,7 +1,6 @@
 package com.gamjungseoga.app.screens.analysis
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,7 +51,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.gamjungseoga.app.R
 import com.gamjungseoga.app.components.EmotionBar
+import com.gamjungseoga.app.components.EmotionIconCircle
 import com.gamjungseoga.app.components.EmotionSummaryCard
 import com.gamjungseoga.app.components.PersonPlaceInfoCard
 import com.gamjungseoga.app.components.TopEmotionsBarCard
@@ -79,7 +78,6 @@ import com.gamjungseoga.app.network.EmotionScore
 import com.gamjungseoga.app.network.MonthlyStatsResponse
 import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.ButtonMint
-import com.gamjungseoga.app.ui.theme.ChartMint
 import com.gamjungseoga.app.ui.theme.EmptyGray
 import com.gamjungseoga.app.ui.theme.HighlightBlue
 import com.gamjungseoga.app.ui.theme.LoverPink
@@ -250,6 +248,7 @@ data class MonthlyReportData(
     val topEmotionColor: Color,
     val topEmotions: List<EmotionBar>,
     val weeklyFlow: List<WeekPoint>,
+    val flowColor: Color,
     val dayColors: List<Color?>,
     val positiveFeltDate: String,
     val positiveFeltBars: List<FeltEmotionBar>,
@@ -258,10 +257,12 @@ data class MonthlyReportData(
     val personLabel: String?,
     val personFeelingHighlight: String,
     val personFeelingColor: Color,
+    val personIconColor: Color,
     val personPills: List<PillStat>,
     val placeLabel: String?,
     val placeFeelingHighlight: String,
     val placeFeelingColor: Color,
+    val placeIconColor: Color,
     val placePills: List<PillStat>
 )
 
@@ -275,25 +276,31 @@ private fun toMonthlyReportData(
     negativeDayStats: DailyStatsResponse?
 ): MonthlyReportData {
     val topBars = toTopEmotionBars(stats.top3Emotions)
+    val personTopEmotion = stats.topCompanion?.top3Emotions?.firstOrNull()?.emotion
+    val placeTopEmotion = stats.topPlace?.top3Emotions?.firstOrNull()?.emotion
     return MonthlyReportData(
         topEmotion = stats.topEmotion ?: "-",
         topEmotionPercent = topBars.firstOrNull()?.percent ?: 0,
         topEmotionColor = colorForEmotion(stats.topEmotion, stats.emotionDistribution) ?: HighlightBlue,
         topEmotions = topBars,
         weeklyFlow = toWeeklyFlow(stats.emotionFlow),
+        // 감정 흐름 차트는 그 달 대표 감정 색으로 그림
+        flowColor = emotionColorFor(stats.topEmotion),
         dayColors = toDayColors(yearMonth, stats),
         positiveFeltDate = formatFeltDate(stats.mostPositiveDay),
         positiveFeltBars = toFeltEmotionBars(positiveDayStats?.top3Emotions.orEmpty()),
         negativeFeltDate = formatFeltDate(stats.mostNegativeDay),
         negativeFeltBars = toFeltEmotionBars(negativeDayStats?.top3Emotions.orEmpty()),
         personLabel = stats.topCompanion?.name?.ifBlank { null },
-        personFeelingHighlight = stats.topCompanion?.top3Emotions?.firstOrNull()?.emotion ?: "-",
+        personFeelingHighlight = personTopEmotion ?: "-",
         // "-" 자리표시자로 색을 찾으면 미등록 감정 로그가 찍히므로 원래 값(null 가능)으로 찾음
-        personFeelingColor = emotionTextColorFor(stats.topCompanion?.top3Emotions?.firstOrNull()?.emotion),
+        personFeelingColor = emotionTextColorFor(personTopEmotion),
+        personIconColor = emotionColorFor(personTopEmotion),
         personPills = toPills(stats.topCompanion?.top3Emotions.orEmpty()),
         placeLabel = stats.topPlace?.name?.ifBlank { null },
-        placeFeelingHighlight = stats.topPlace?.top3Emotions?.firstOrNull()?.emotion ?: "-",
-        placeFeelingColor = emotionTextColorFor(stats.topPlace?.top3Emotions?.firstOrNull()?.emotion),
+        placeFeelingHighlight = placeTopEmotion ?: "-",
+        placeFeelingColor = emotionTextColorFor(placeTopEmotion),
+        placeIconColor = emotionColorFor(placeTopEmotion),
         placePills = toPills(stats.topPlace?.top3Emotions.orEmpty())
     )
 }
@@ -433,6 +440,7 @@ fun AnalysisScreen() {
                             titlePrefix = "오늘 가장 많이 느낀 감정은\n",
                             emotion = stats.topEmotion ?: "-",
                             percent = bars.firstOrNull()?.percent ?: 0,
+                            rankColors = bars.map { it.color },
                             fontFamily = SCoreDreamFontFamily,
                             // "-" 자리표시자로 색을 찾으면 미등록 감정 로그가 찍히므로 원래 값(null 가능)으로 찾음
                             emotionColor = emotionColorFor(stats.topEmotion)
@@ -456,7 +464,8 @@ fun AnalysisScreen() {
                             if (companion != null) {
                                 PersonPlaceInfoCard(
                                     modifier = Modifier.weight(1f),
-                                    iconRes = R.drawable.analysis_person_icon,
+                                    iconRes = R.drawable.analysis_person_glyph,
+                                    emotionColor = emotionColorFor(stats.topEmotion),
                                     prefix = "오늘 함께한 사람은",
                                     highlight = companion,
                                     fontFamily = SCoreDreamFontFamily
@@ -465,7 +474,8 @@ fun AnalysisScreen() {
                             if (place != null) {
                                 PersonPlaceInfoCard(
                                     modifier = Modifier.weight(1f),
-                                    iconRes = R.drawable.analysis_location_icon,
+                                    iconRes = R.drawable.analysis_location_glyph,
+                                    emotionColor = emotionColorFor(stats.topEmotion),
                                     prefix = "오늘 방문한 장소는",
                                     highlight = place,
                                     fontFamily = SCoreDreamFontFamily
@@ -512,6 +522,7 @@ fun AnalysisScreen() {
                             titlePrefix = "이번 달 가장 많이 느낀 감정은\n",
                             emotion = monthlyReport.topEmotion,
                             percent = monthlyReport.topEmotionPercent,
+                            rankColors = monthlyReport.topEmotions.map { it.color },
                             fontFamily = SCoreDreamFontFamily,
                             emotionColor = monthlyReport.topEmotionColor
                         )
@@ -522,7 +533,7 @@ fun AnalysisScreen() {
                     }
                     item {
                         Spacer(Modifier.height(16.dp))
-                        EmotionFlowCard(monthlyReport.weeklyFlow)
+                        EmotionFlowCard(monthlyReport.weeklyFlow, lineColor = monthlyReport.flowColor)
                     }
                     item {
                         Spacer(Modifier.height(16.dp))
@@ -555,12 +566,15 @@ fun AnalysisScreen() {
                         val person = monthlyReport.personLabel
                         if (person == null) {
                             PersonPlaceEmptyCard(
-                                iconRes = R.drawable.analysis_person_icon,
+                                iconRes = R.drawable.analysis_person_glyph,
+                                // 기록이 없어 연관 감정도 없으므로 "감정 없음" 기본색
+                                iconColor = emotionColorFor(null),
                                 message = "아직 함께한 사람 기록이 없어요"
                             )
                         } else {
                             PersonPlaceCard(
-                                iconRes = R.drawable.analysis_person_icon,
+                                iconRes = R.drawable.analysis_person_glyph,
+                                iconColor = monthlyReport.personIconColor,
                                 highlightPrefix = "가장 많이 함께한 사람은 ",
                                 highlight = person,
                                 highlightColor = LoverPink,
@@ -578,12 +592,15 @@ fun AnalysisScreen() {
                         val place = monthlyReport.placeLabel
                         if (place == null) {
                             PersonPlaceEmptyCard(
-                                iconRes = R.drawable.analysis_location_icon,
+                                iconRes = R.drawable.analysis_location_glyph,
+                                // 기록이 없어 연관 감정도 없으므로 "감정 없음" 기본색
+                                iconColor = emotionColorFor(null),
                                 message = "아직 방문한 장소 기록이 없어요"
                             )
                         } else {
                             PersonPlaceCard(
-                                iconRes = R.drawable.analysis_location_icon,
+                                iconRes = R.drawable.analysis_location_glyph,
+                                iconColor = monthlyReport.placeIconColor,
                                 highlightPrefix = "가장 많이 방문한 장소는 ",
                                 highlight = place,
                                 highlightColor = SchoolBlue,
@@ -680,7 +697,7 @@ private fun DateNav(dateText: String, onPrev: () -> Unit, onNext: () -> Unit, on
 
 
 @Composable
-private fun EmotionFlowCard(weeklyFlow: List<WeekPoint>) {
+private fun EmotionFlowCard(weeklyFlow: List<WeekPoint>, lineColor: Color) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         color = SurfaceColor,
@@ -710,9 +727,9 @@ private fun EmotionFlowCard(weeklyFlow: List<WeekPoint>) {
                     Text("평범한 날", style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily), color = BodyGray)
                     Text("안좋은 날", style = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily), color = BodyGray)
                 }
-                val strokeColor = ChartMint
-                val fillTop = ChartMint.copy(alpha = 0.45f)
-                val fillBottom = ChartMint.copy(alpha = 0f)
+                val strokeColor = lineColor
+                val fillTop = lineColor.copy(alpha = 0.45f)
+                val fillBottom = lineColor.copy(alpha = 0f)
                 Canvas(
                     modifier = Modifier
                         .weight(1f)
@@ -934,7 +951,7 @@ private fun TopFeltDayCard(
 // 그 달에 사람/장소 기록이 없을 때 PersonPlaceCard 자리에 쓰는 안내 카드. 월간 리포트는 섹션 순서가
 // 고정이라(긍정/부정 카드도 "기록된 감정이 없어요"로 자리를 유지) 카드를 숨기지 않고 문구만 바꾼다.
 @Composable
-private fun PersonPlaceEmptyCard(iconRes: Int, message: String) {
+private fun PersonPlaceEmptyCard(iconRes: Int, iconColor: Color, message: String) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         color = SurfaceColor,
@@ -944,11 +961,7 @@ private fun PersonPlaceEmptyCard(iconRes: Int, message: String) {
             modifier = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(28.dp)
-            )
+            EmotionIconCircle(glyphRes = iconRes, color = iconColor, size = 28.dp)
             Spacer(Modifier.width(8.dp))
             Text(
                 message,
@@ -963,6 +976,7 @@ private fun PersonPlaceEmptyCard(iconRes: Int, message: String) {
 @Composable
 private fun PersonPlaceCard(
     iconRes: Int,
+    iconColor: Color,
     highlightPrefix: String,
     highlight: String,
     highlightColor: Color,
@@ -980,11 +994,7 @@ private fun PersonPlaceCard(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp)
-                )
+                EmotionIconCircle(glyphRes = iconRes, color = iconColor, size = 28.dp)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = buildAnnotatedString {

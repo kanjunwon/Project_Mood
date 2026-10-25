@@ -60,6 +60,7 @@ import java.time.LocalDate
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlin.math.abs
+import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.network.SEOUL_ZONE
@@ -69,9 +70,6 @@ import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import com.gamjungseoga.app.ui.theme.AccentBlue
-import com.gamjungseoga.app.ui.theme.AccentGreen
-import com.gamjungseoga.app.ui.theme.AccentOrange
 import com.gamjungseoga.app.ui.theme.CardBackground
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.FoldBackGray
@@ -82,7 +80,6 @@ import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.PlaceholderNavy
 import com.gamjungseoga.app.ui.theme.PlaceholderOcean
 import com.gamjungseoga.app.ui.theme.PlaceholderTerracotta
-import com.gamjungseoga.app.ui.theme.RibbonPink
 import com.gamjungseoga.app.ui.theme.SolidGreen
 import com.gamjungseoga.app.ui.theme.TitleBrown
 
@@ -91,6 +88,8 @@ private data class MonthlyEmotion(
     val month: String,
     val emotion: String,
     val count: String,
+    // 그 달 대표 감정 색. 카드 장식(테이프/조각/점)을 이 색으로 칠함
+    val accentColor: Color,
     val imageRes: Int? = null,
     val imageUrl: String? = null
 )
@@ -100,6 +99,8 @@ private data class DiaryPage(
     val dateTop: String,
     val dateBottom: String,
     val color: Color,
+    // 오른쪽 위 책갈피 색 = 그 일기의 감정 색
+    val ribbonColor: Color,
     val imageUrl: String? = null,
     val showDateTag: Boolean = false
 )
@@ -140,6 +141,8 @@ private fun computeMonthlyEmotions(diaries: List<DiaryEntry>): List<MonthlyEmoti
             month = "${yearMonth.monthValue}월의 감정",
             emotion = topEmotion?.key ?: "기록 없음",
             count = "${topEmotion?.value ?: 0}회 기록",
+            // 기록이 없는 달은 "감정 없음" 기본색
+            accentColor = emotionColorFor(topEmotion?.key),
             // 그 달에 기록이 없으면 샘플 일러스트도 넣지 않는다 (이미지 영역은 MonthlyEmotionCard에서 배경색만 보이게 처리됨)
             imageRes = if (topEmotion != null) monthlyEmotionImageRes.getOrNull(monthsAgo) else null,
             imageUrl = ApiClient.resolveImageUrl(representativeImageUrl)
@@ -158,6 +161,7 @@ private fun DiaryEntry.toDiaryPage(index: Int): DiaryPage {
         dateTop = created?.format(recentPageDateFormatter)?.uppercase(Locale.ENGLISH) ?: "-",
         dateBottom = created?.dayOfMonth?.toString() ?: "-",
         color = recentPageColors[index % recentPageColors.size],
+        ribbonColor = emotionColorFor(topEmotion),
         imageUrl = ApiClient.resolveImageUrl(imageUrl),
         showDateTag = true
     )
@@ -254,7 +258,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
                             .height(IntrinsicSize.Min)
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
                         monthlyEmotions.forEachIndexed { index, item ->
@@ -476,32 +480,32 @@ private fun MonthlyEmotionCard(item: MonthlyEmotion, index: Int) {
             }
         }
 
-        // 카드마다 다른 장식 (마스킹테이프/스티커), 피그마 디자인 그대로
+        // 카드마다 다른 장식 (마스킹테이프/스티커) 모양은 피그마 그대로, 색은 그 달 대표 감정 색
         when (index) {
-            0 -> OrangeTapeAccent()
-            1 -> BlueCornerAccents()
-            2 -> GreenDotAccent()
+            0 -> TapeAccent(item.accentColor)
+            1 -> CornerAccents(item.accentColor)
+            2 -> DotAccent(item.accentColor)
         }
     }
 }
 
 // 장식은 카드 Box 위에 그려서 그림/텍스트보다 앞에 오고, 카드 경계 밖으로 걸치는 부분은 부모 Row의
-// 세로 padding(8dp) 안에 들어가게 크기/오프셋을 잡는다.
+// 세로 padding(10dp) 안에 들어가게 크기/오프셋을 잡는다.
 @Composable
-private fun BoxScope.OrangeTapeAccent() {
+private fun BoxScope.TapeAccent(color: Color) {
     // 카드 상단 가운데에 가로로 붙인 마스킹테이프: 절반은 카드 위, 절반은 카드 밖으로 걸침.
     // 테이프 느낌을 위해 살짝 반투명하게 해서 아래 그림이 비치게 함.
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .offset(y = (-7).dp)
-            .size(width = 44.dp, height = 14.dp)
-            .background(AccentOrange.copy(alpha = 0.9f), RoundedCornerShape(1.dp))
+            .offset(y = (-10).dp)
+            .size(width = 90.dp, height = 20.dp)
+            .background(color.copy(alpha = 0.9f), RoundedCornerShape(1.dp))
     )
 }
 
 @Composable
-private fun BoxScope.BlueCornerAccents() {
+private fun BoxScope.CornerAccents(color: Color) {
     // 피그마 실측(9.9x57.6px, rotate 39.94deg): 폭 넓은 막대가 아니라 가늘고 긴 조각이
     // 40도 정도 기울어 모서리에 비스듬히 걸쳐있는 모양(사진 모서리 테이프 느낌).
     // 조각 중심이 카드 모서리 꼭짓점에 오도록 오프셋 = -(조각 크기 / 2).
@@ -511,7 +515,7 @@ private fun BoxScope.BlueCornerAccents() {
             .offset(x = (-2).dp, y = (-11).dp)
             .size(width = 4.dp, height = 22.dp)
             .graphicsLayer { rotationZ = 40f }
-            .background(AccentBlue, RoundedCornerShape(1.dp))
+            .background(color, RoundedCornerShape(1.dp))
     )
     Box(
         modifier = Modifier
@@ -519,19 +523,19 @@ private fun BoxScope.BlueCornerAccents() {
             .offset(x = 2.dp, y = 11.dp)
             .size(width = 4.dp, height = 22.dp)
             .graphicsLayer { rotationZ = 40f }
-            .background(AccentBlue, RoundedCornerShape(1.dp))
+            .background(color, RoundedCornerShape(1.dp))
     )
 }
 
 @Composable
-private fun BoxScope.GreenDotAccent() {
+private fun BoxScope.DotAccent(color: Color) {
     // 카드 위쪽 가운데, 상단 경계에 절반 걸치는 스티커 점
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
             .offset(y = (-8).dp)
             .size(16.dp)
-            .background(AccentGreen, CircleShape)
+            .background(color, CircleShape)
     )
 }
 
@@ -591,7 +595,7 @@ private fun DiaryPageCard(
                         scaleY = scale
                         transformOrigin = TransformOrigin(1f, 0f)
                     },
-                color = RibbonPink,
+                color = page.ribbonColor,
                 shape = BookmarkRibbonShape(notchHeight = 10.dp)
             ) {
                 Column(
