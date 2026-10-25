@@ -37,6 +37,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
 import com.gamjungseoga.app.ui.theme.PretendardFontFamily
@@ -123,6 +124,12 @@ fun DiaryWhoScreen(
     }
 }
 
+private val WhoChipTextStyle
+    @Composable get() = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily, fontSize = 14.sp)
+
+// 피그마처럼 얇은 테두리/낮은 높이의 가벼운 칩. 선택해도 칩 너비가 바뀌지 않도록 체크 표시 자리를
+// 항상 확보해 두고(미선택 시 빈 칸), 선택됐을 때만 체크를 그린다. 너비가 바뀌면 FlowRow 줄바꿈이
+// 다시 계산돼서 칩들이 다른 줄로 튀기 때문.
 @Composable
 private fun WhoChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
@@ -135,20 +142,22 @@ private fun WhoChip(label: String, selected: Boolean, onClick: () -> Unit) {
                 } else {
                     Modifier
                         .background(Color.White)
-                        .border(2.dp, NavInactiveGray, RoundedCornerShape(50))
+                        .border(1.dp, NavInactiveGray, RoundedCornerShape(50))
                 }
             )
             .clickable { onClick() }
-            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily),
+            style = WhoChipTextStyle,
             color = if (selected) Color.White else TitleBrown
         )
-        if (selected) {
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(4.dp))
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(14.dp)) {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+            }
         }
     }
 }
@@ -161,21 +170,21 @@ private fun WhoCustomChip(text: String, onTextChange: (String) -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(50))
             .background(Color.White)
-            .border(2.dp, NavInactiveGray, RoundedCornerShape(50))
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .border(1.dp, NavInactiveGray, RoundedCornerShape(50))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Text("기타", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily), color = TitleBrown)
+        Text("기타", style = WhoChipTextStyle, color = TitleBrown)
         Spacer(Modifier.width(16.dp))
         Box(modifier = Modifier.weight(1f)) {
             BasicTextField(
                 value = text,
                 onValueChange = onTextChange,
                 modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily, color = Color.Black),
+                textStyle = WhoChipTextStyle.copy(color = Color.Black),
                 cursorBrush = SolidColor(TitleBrown),
                 decorationBox = { innerTextField ->
                     if (text.isEmpty()) {
-                        Text("이곳에 작성해 주세요.", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily), color = NavInactiveGray)
+                        Text("이곳에 작성해 주세요.", style = WhoChipTextStyle, color = NavInactiveGray)
                     }
                     innerTextField()
                 }
