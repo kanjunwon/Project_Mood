@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamjungseoga.app.R
 import com.gamjungseoga.app.components.ConfirmDialog
@@ -274,7 +277,7 @@ private fun StatsCard(daysCount: Int, emotionCount: Int) {
                 unit = "Days"
             )
             VerticalDivider(
-                modifier = Modifier.height(48.dp).padding(horizontal = 12.dp),
+                modifier = Modifier.height(56.dp).padding(horizontal = 12.dp),
                 color = NavInactiveGray.copy(alpha = 0.4f)
             )
             StatColumn(
@@ -288,21 +291,45 @@ private fun StatsCard(daysCount: Int, emotionCount: Int) {
     }
 }
 
+// 숫자 36sp / 라벨 20sp. 행간은 공용 Typography 규칙(글자 크기 + 2sp)을 따름.
+private val StatValueTextStyle
+    @Composable get() = MaterialTheme.typography.headlineSmall.copy(fontSize = 36.sp, lineHeight = 38.sp)
+private val StatUnitTextStyle
+    @Composable get() = MaterialTheme.typography.labelSmall.copy(fontSize = 20.sp, lineHeight = 22.sp)
+
+// 숫자와 단위는 글자 크기가 달라서 아래 끝이 아니라 baseline으로 맞추고, 아이콘은 아래 끝을 그 baseline에
+// 붙인다. 칸 폭(화면 폭의 절반 남짓)에 "1234 Emotion"처럼 다 안 들어가면 단위가 통째로 다음 줄로
+// 내려가게 FlowRow 사용(글자 단위로 쪼개지거나 잘리지 않게).
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StatColumn(modifier: Modifier, icon: Painter, label: String, value: String, unit: String) {
     Column(modifier = modifier) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = CountLabelBrown)
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Icon(icon, contentDescription = null, tint = SolidGreen, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(value, style = MaterialTheme.typography.headlineSmall, color = SolidGreen)
-            Spacer(Modifier.width(6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = SolidGreen,
+                modifier = Modifier
+                    .size(20.dp)
+                    .alignBy { it.measuredHeight }
+            )
+            Text(
+                value,
+                style = StatValueTextStyle,
+                color = SolidGreen,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.alignByBaseline()
+            )
             Text(
                 unit,
-                style = MaterialTheme.typography.labelSmall,
+                style = StatUnitTextStyle,
                 color = NavInactiveGray,
-                modifier = Modifier.padding(bottom = 4.dp)
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.alignByBaseline()
             )
         }
     }
