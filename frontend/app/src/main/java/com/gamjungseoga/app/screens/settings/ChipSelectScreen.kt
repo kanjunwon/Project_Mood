@@ -14,9 +14,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 
+private val chipSelectTopSpacing = 120.dp // 톱바 아래부터 선택지 묶음 시작까지
+
 // 성별 변경 / 직업 변경 화면과 회원가입의 성별/직업 단계가 공유하는 UI: 상단 뒤로가기+제목,
-// 화면 하단에 모인 선택지 목록 + 바로 아래 버튼. 선택지가 적으면(성별 2개) 그룹이 더 아래쪽에,
-// 많으면(직업 5개) 더 위쪽부터 차지하도록 위쪽 spacer에 weight를 줘서 전체를 하단 기준으로 쌓는다.
+// 선택지 목록 + 바로 아래 버튼. 예전엔 하단 기준으로 쌓아서 선택지가 적으면(성별 2개) 위쪽이
+// 크게 비었는데, 피그마처럼 선택지 개수와 상관없이 톱바 아래 고정 간격에서 시작하고 남는 공간은
+// 아래로 보낸다.
 @Composable
 fun ChipSelectScreen(
     title: String,
@@ -32,7 +35,7 @@ fun ChipSelectScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         SettingsSubScreenTopBar(title = title, onBack = onBack)
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(chipSelectTopSpacing))
 
         Column(
             modifier = Modifier
@@ -68,6 +71,6 @@ fun ChipSelectScreen(
             loading = saving,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.weight(1f))
     }
 }

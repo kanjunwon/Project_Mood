@@ -26,6 +26,7 @@ private val currentYear = LocalDate.now().year
 
 // 설정의 "생년월일 변경"과 회원가입의 "생년월일" 단계가 공유하는 UI: 상단 뒤로가기+제목,
 // 년/월/일 휠 피커 세 개, 하단 버튼. 값 보관과 저장 시점/로직은 호출하는 쪽(ViewModel)이 맡는다.
+// 휠과 버튼은 고정 간격으로 묶어서 화면 가운데~아래쪽에 두고(피그마), 위:아래 남는 공간을 2:1로 나눈다.
 @Composable
 fun BirthDateScreen(
     title: String,
@@ -47,7 +48,7 @@ fun BirthDateScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         SettingsSubScreenTopBar(title = title, onBack = onBack)
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.weight(2f))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -96,7 +97,7 @@ fun BirthDateScreen(
             )
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(48.dp))
 
         SettingsPrimaryButton(
             text = confirmButtonText,
@@ -104,6 +105,7 @@ fun BirthDateScreen(
             loading = saving,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
+        Spacer(Modifier.weight(1f))
         Spacer(Modifier.height(24.dp))
     }
 }
