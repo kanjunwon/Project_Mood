@@ -27,6 +27,7 @@ import com.gamjungseoga.app.components.TopEmotionsBarCard
 import com.gamjungseoga.app.components.topEmotionBarsFromScores
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryGenerateResponse
+import com.gamjungseoga.app.ui.theme.DiaryBodyTextStyle
 import com.gamjungseoga.app.ui.theme.PretendardFontFamily
 import com.gamjungseoga.app.ui.theme.TitleBrown
 
@@ -72,7 +73,7 @@ fun DiaryCompleteScreen(
             Spacer(Modifier.height(20.dp))
             Text(
                 diaryText,
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily),
+                style = DiaryBodyTextStyle,
                 color = Color.Black,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )

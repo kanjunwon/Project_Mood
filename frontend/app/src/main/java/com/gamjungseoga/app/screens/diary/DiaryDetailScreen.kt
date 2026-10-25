@@ -37,6 +37,7 @@ import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import com.gamjungseoga.app.ui.theme.AccentTerracotta
 import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
+import com.gamjungseoga.app.ui.theme.DiaryBodyTextStyle
 import com.gamjungseoga.app.ui.theme.PretendardFontFamily
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
@@ -141,7 +142,7 @@ fun DiaryDetailScreen(
                     Spacer(Modifier.height(20.dp))
                     Text(
                         diaryEntry.generatedDiary.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily),
+                        style = DiaryBodyTextStyle,
                         color = Color.Black,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
