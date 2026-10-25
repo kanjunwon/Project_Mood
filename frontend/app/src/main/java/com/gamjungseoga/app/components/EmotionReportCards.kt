@@ -43,8 +43,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamjungseoga.app.emotion.drawableForEmotion
 import com.gamjungseoga.app.emotion.emotionColorFor
+import com.gamjungseoga.app.emotion.readableOnWhite
 import com.gamjungseoga.app.ui.theme.BodyGray
-import com.gamjungseoga.app.ui.theme.HighlightMint
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import com.gamjungseoga.app.util.Josa
@@ -174,7 +174,8 @@ fun EmotionSummaryCard(
                 Text(
                     text = buildAnnotatedString {
                         append(titlePrefix)
-                        withStyle(SpanStyle(color = emotionColor, fontWeight = FontWeight.Bold)) {
+                        // 원 색은 감정 색 그대로, 글자는 흰 배경에서 읽히도록 대비를 확보한 같은 계열 색
+                        withStyle(SpanStyle(color = readableOnWhite(emotionColor), fontWeight = FontWeight.Bold)) {
                             append(emotion)
                         }
                         append("이에요")
@@ -314,7 +315,7 @@ fun PersonPlaceInfoCard(
             )
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = HighlightMint, fontWeight = FontWeight.Bold)) {
+                    withStyle(SpanStyle(color = readableOnWhite(emotionColor), fontWeight = FontWeight.Bold)) {
                         append(highlight)
                     }
                     append(josaFor(highlight, Josa.COPULA))

@@ -46,8 +46,11 @@ private val loggedUnknownEmotions = ConcurrentHashMap.newKeySet<String>()
 
 // 감정 색을 흰 배경 위 "글자"로 쓸 때용. 안정형 연두/해소형 민트처럼 연한 색은 글자로는 읽기 어려워서,
 // 흰 배경 대비 3:1(굵은 글씨 기준 최소 대비)이 될 때까지 같은 색을 조금씩 어둡게 한다. 원래 진한 색은 그대로.
-fun emotionTextColorFor(emotion: String?): Color {
-    var color = emotionColorFor(emotion)
+fun emotionTextColorFor(emotion: String?): Color = readableOnWhite(emotionColorFor(emotion))
+
+// emotionTextColorFor의 색 버전. 감정 이름 대신 이미 고른 감정 색을 받는 카드(EmotionSummaryCard 등)에서 씀.
+fun readableOnWhite(base: Color): Color {
+    var color = base
     repeat(10) {
         if (contrastOnWhite(color) >= 3f) return color
         color = lerp(color, Color.Black, 0.1f)

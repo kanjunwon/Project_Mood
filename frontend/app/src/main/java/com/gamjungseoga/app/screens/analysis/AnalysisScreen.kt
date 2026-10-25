@@ -72,21 +72,17 @@ import com.gamjungseoga.app.emotion.emotionTextColorFor
 import com.gamjungseoga.app.network.describeLoadError
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DailyStatsResponse
-import com.gamjungseoga.app.network.EmotionDistributionItem
 import com.gamjungseoga.app.network.EmotionFlowPoint
 import com.gamjungseoga.app.network.EmotionScore
 import com.gamjungseoga.app.network.MonthlyStatsResponse
 import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.EmptyGray
-import com.gamjungseoga.app.ui.theme.HighlightBlue
-import com.gamjungseoga.app.ui.theme.LoverPink
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
 import com.gamjungseoga.app.ui.theme.NegativeDateNavy
 import com.gamjungseoga.app.ui.theme.PositiveDatePink
 import com.gamjungseoga.app.ui.theme.SCoreDreamFontFamily
-import com.gamjungseoga.app.ui.theme.SchoolBlue
 import com.gamjungseoga.app.ui.theme.SolidGreen
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TabInactiveGray
@@ -146,27 +142,10 @@ private fun toWeeklyFlow(emotionFlow: List<EmotionFlowPoint>): List<WeekPoint> {
     }
 }
 
-// GET /stats/monthly의 emotion_distribution이 감정별 색상(hex)을 같이 내려주므로, 그 색을
-// 파싱해서 캘린더 셀/대표 감정 강조색으로 그대로 재사용 (프론트에서 감정-색 매핑을 새로 만들지 않음)
-private fun parseHexColor(hex: String): Color? = runCatching {
-    val cleaned = hex.removePrefix("#")
-    val argb = when (cleaned.length) {
-        6 -> 0xFF000000L or cleaned.toLong(16)
-        8 -> cleaned.toLong(16)
-        else -> return null
-    }
-    Color(argb.toInt())
-}.getOrNull()
-
-private fun colorForEmotion(emotion: String?, distribution: List<EmotionDistributionItem>): Color? {
-    if (emotion == null) return null
-    val hex = distribution.firstOrNull { it.emotion == emotion }?.color ?: return null
-    return parseHexColor(hex)
-}
-
 // 이번 달 캘린더를 월요일 시작 7열 그리드로 채움. 1일 앞/말일 뒤의 자리 채움 칸만 null(투명)이고,
-// 그 달의 날짜는 전부 칸으로 그린다: 일기가 없는 날은 EmptyGray, 있는 날은 서버가 준 감정 색.
-// 서버 색을 못 찾으면 프론트 감정 매핑(emotionColorFor)으로 대체해서 "일기 없는 날" 회색과 섞이지 않게 함.
+// 그 달의 날짜는 전부 칸으로 그린다: 일기가 없는 날은 EmptyGray, 있는 날은 그날 대표 감정 색.
+// 감정 색은 서버가 emotion_distribution에 주는 hex가 아니라 앱 매핑(emotionColorFor) 하나로 통일한다
+// (범례/막대/요약 카드와 같은 기준이어야 서버 색과 앱 색이 달라도 한 화면 안에서 색이 어긋나지 않음).
 private fun toDayColors(yearMonth: YearMonth, stats: MonthlyStatsResponse): List<Color?> {
     val flowByDate = stats.emotionFlow.associateBy { it.date }
     val leadingBlanks = yearMonth.atDay(1).dayOfWeek.value - 1
@@ -177,8 +156,7 @@ private fun toDayColors(yearMonth: YearMonth, stats: MonthlyStatsResponse): List
         val flowPoint = flowByDate[dateStr]
         cells += when {
             flowPoint == null -> EmptyGray
-            else -> colorForEmotion(flowPoint.topEmotion, stats.emotionDistribution)
-                ?: emotionColorFor(flowPoint.topEmotion)
+            else -> emotionColorFor(flowPoint.topEmotion)
         }
     }
     while (cells.size % 7 != 0) cells += null
@@ -281,7 +259,8 @@ private fun toMonthlyReportData(
     return MonthlyReportData(
         topEmotion = stats.topEmotion ?: "-",
         topEmotionPercent = topBars.firstOrNull()?.percent ?: 0,
-        topEmotionColor = colorForEmotion(stats.topEmotion, stats.emotionDistribution) ?: HighlightBlue,
+        // 요약 카드 감정 색도 일간/일기 화면과 같은 프론트 매핑(emotionColorFor) 기준
+        topEmotionColor = emotionColorFor(stats.topEmotion),
         topEmotions = topBars,
         weeklyFlow = toWeeklyFlow(stats.emotionFlow),
         // 감정 흐름 차트는 그 달 대표 감정 색으로 그림
@@ -577,7 +556,7 @@ fun AnalysisScreen() {
                                 iconColor = monthlyReport.personIconColor,
                                 highlightPrefix = "가장 많이 함께한 사람은 ",
                                 highlight = person,
-                                highlightColor = LoverPink,
+                                highlightColor = monthlyReport.personFeelingColor,
                                 recordLine = "${withJosa(person, Josa.GWA_WA)} 함께했던 기록이에요",
                                 feelingPrefix = "${withJosa(person, Josa.EUN_NEUN)} 나에게 ",
                                 feelingHighlight = monthlyReport.personFeelingHighlight,
@@ -603,7 +582,7 @@ fun AnalysisScreen() {
                                 iconColor = monthlyReport.placeIconColor,
                                 highlightPrefix = "가장 많이 방문한 장소는 ",
                                 highlight = place,
-                                highlightColor = SchoolBlue,
+                                highlightColor = monthlyReport.placeFeelingColor,
                                 recordLine = "${place}에서 느꼈던 기록이에요",
                                 feelingPrefix = "${withJosa(place, Josa.EUN_NEUN)} 나에게 ",
                                 feelingHighlight = monthlyReport.placeFeelingHighlight,
