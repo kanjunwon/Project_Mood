@@ -2,7 +2,6 @@ package com.gamjungseoga.app.screens.archive
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -20,10 +18,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,14 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.gamjungseoga.app.components.WheelPicker
+import com.gamjungseoga.app.components.YearMonthPickerDialog
 import com.gamjungseoga.app.emotion.drawableForEmotion
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
@@ -49,10 +43,7 @@ import com.gamjungseoga.app.network.parseServerDateTimeInSeoul
 import com.gamjungseoga.app.screens.diary.DiaryListState
 import com.gamjungseoga.app.screens.diary.DiaryListViewModel
 import com.gamjungseoga.app.ui.theme.BodyGray
-import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
-import com.gamjungseoga.app.ui.theme.NavInactiveGray
-import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -131,7 +122,7 @@ fun ArchiveScreen(
     }
 
     if (showDatePicker) {
-        ArchiveDatePickerDialog(
+        YearMonthPickerDialog(
             initialYearMonth = selectedYearMonth,
             onConfirm = {
                 selectedYearMonth = it
@@ -186,107 +177,4 @@ private fun ArchiveCard(entry: DiaryEntry, onClick: () -> Unit) {
         Text(archiveTitle(entry), style = MaterialTheme.typography.titleSmall, color = TitleBrown)
         Text(formatArchiveDate(entry.createdAt), style = MaterialTheme.typography.labelSmall, color = MonthLabelGray)
     }
-}
-
-private val datePickerItemHeight = 56.dp
-
-@Composable
-private fun ArchiveDatePickerDialog(
-    initialYearMonth: YearMonth,
-    onConfirm: (YearMonth) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var year by remember { mutableStateOf(initialYearMonth.year) }
-    var month by remember { mutableStateOf(initialYearMonth.monthValue) }
-    val years = remember { ((initialYearMonth.year - 10)..(initialYearMonth.year + 10)).toList() }
-    val months = remember { (1..12).toList() }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            color = SurfaceColor,
-            shape = RoundedCornerShape(32.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("날짜 선택", style = MaterialTheme.typography.titleMedium, color = TitleBrown)
-                Spacer(Modifier.height(16.dp))
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .fillMaxWidth()
-                    ) {
-                        HorizontalDivider(color = NavInactiveGray)
-                        Spacer(Modifier.height(datePickerItemHeight))
-                        HorizontalDivider(color = NavInactiveGray)
-                    }
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        WheelPicker(
-                            items = years,
-                            selectedIndex = years.indexOf(year).coerceAtLeast(0),
-                            onSelectedIndexChange = { year = years[it] },
-                            itemHeight = datePickerItemHeight,
-                            infinite = false,
-                            modifier = Modifier.width(140.dp)
-                        ) { item, selected ->
-                            DatePickerWheelLabel("${item}년", selected)
-                        }
-                        WheelPicker(
-                            items = months,
-                            selectedIndex = month - 1,
-                            onSelectedIndexChange = { month = months[it] },
-                            itemHeight = datePickerItemHeight,
-                            infinite = true,
-                            modifier = Modifier.width(100.dp)
-                        ) { item, selected ->
-                            DatePickerWheelLabel("${item}월", selected)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        onClick = onDismiss,
-                        color = MonthLabelGray.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.weight(1f).height(56.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                            Text("취소", style = MaterialTheme.typography.bodyMedium, color = TitleBrown)
-                        }
-                    }
-                    Surface(
-                        onClick = { onConfirm(YearMonth.of(year, month)) },
-                        color = ButtonMint,
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.weight(1f).height(56.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                            Text("확인", style = MaterialTheme.typography.bodyMedium, color = Color.White)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DatePickerWheelLabel(text: String, selected: Boolean) {
-    Text(
-        text,
-        style = if (selected) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
-        color = if (selected) TitleBrown else MonthLabelGray
-    )
 }

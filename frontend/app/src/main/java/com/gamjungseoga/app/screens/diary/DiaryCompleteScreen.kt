@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gamjungseoga.app.R
 import com.gamjungseoga.app.components.EmotionBadge
@@ -76,7 +75,6 @@ fun DiaryCompleteScreen(
             Text(
                 diaryText,
                 style = DiaryBodyTextStyle,
-                color = Color.Black,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }

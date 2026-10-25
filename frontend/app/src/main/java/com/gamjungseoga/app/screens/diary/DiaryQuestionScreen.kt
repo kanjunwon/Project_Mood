@@ -25,7 +25,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
-import com.gamjungseoga.app.ui.theme.PretendardFontFamily
+import com.gamjungseoga.app.ui.theme.OmyuPrettyFontFamily
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import java.time.LocalDate
 
@@ -79,13 +79,13 @@ fun DiaryQuestionScreen(
                 value = answer,
                 onValueChange = { if (it.length <= charLimit) onAnswerChange(it) },
                 modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily, color = Color.Black),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = OmyuPrettyFontFamily, color = Color.Black),
                 cursorBrush = SolidColor(TitleBrown),
                 decorationBox = { innerTextField ->
                     if (answer.isEmpty()) {
                         Text(
                             "이곳을 눌러서 답변을 입력해주세요.",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = OmyuPrettyFontFamily),
                             color = NavInactiveGray
                         )
                     }
@@ -98,7 +98,7 @@ fun DiaryQuestionScreen(
                 "${answer.length}/$charLimit",
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.End,
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = PretendardFontFamily),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = OmyuPrettyFontFamily),
                 color = NavInactiveGray
             )
         }

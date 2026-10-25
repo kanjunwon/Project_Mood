@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.gamjungseoga.app.components.YearMonthPickerDialog
 import com.gamjungseoga.app.network.ApiClient
 import com.gamjungseoga.app.network.DiaryEntry
 import com.gamjungseoga.app.network.SEOUL_ZONE
@@ -82,17 +84,20 @@ fun DiaryDateScreen(
     // 기기 시간대가 아니라 서버 기준(서울)으로 "오늘"을 판단해야 다른 시간대 기기에서도
     // 기준이 서버 데이터와 어긋나지 않는다.
     val today = remember { LocalDate.now(SEOUL_ZONE) }
+    var showMonthPicker by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item {
-            Spacer(Modifier.height(16.dp))
+            // 아카이브 "나의 감정 서재" 헤더와 같은 상단 여백(ArchiveScreen의 top contentPadding)
+            Spacer(Modifier.height(49.dp))
             MonthNavRow(
                 displayedMonth = displayedMonth,
                 onPrev = { displayedMonth = displayedMonth.minusMonths(1) },
-                onNext = { displayedMonth = displayedMonth.plusMonths(1) }
+                onNext = { displayedMonth = displayedMonth.plusMonths(1) },
+                onCalendarClick = { showMonthPicker = true }
             )
         }
         item {
@@ -111,10 +116,26 @@ fun DiaryDateScreen(
             )
         }
     }
+
+    if (showMonthPicker) {
+        YearMonthPickerDialog(
+            initialYearMonth = displayedMonth,
+            onConfirm = {
+                displayedMonth = it
+                showMonthPicker = false
+            },
+            onDismiss = { showMonthPicker = false }
+        )
+    }
 }
 
 @Composable
-private fun MonthNavRow(displayedMonth: YearMonth, onPrev: () -> Unit, onNext: () -> Unit) {
+private fun MonthNavRow(
+    displayedMonth: YearMonth,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onCalendarClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -136,12 +157,16 @@ private fun MonthNavRow(displayedMonth: YearMonth, onPrev: () -> Unit, onNext: (
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "다음 달", tint = TitleBrown)
             }
         }
-        Icon(
-            Icons.Filled.CalendarMonth,
-            contentDescription = "달력",
-            tint = TitleBrown,
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
+        // IconButton 터치 영역(48dp)이 아이콘(24dp)보다 넓어서, 아이콘이 원래처럼 오른쪽 여백
+        // 끝에 붙어 보이도록 그 차이의 절반만큼 오른쪽으로 민다.
+        IconButton(
+            onClick = onCalendarClick,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .offset(x = 12.dp)
+        ) {
+            Icon(Icons.Filled.CalendarMonth, contentDescription = "연/월 선택", tint = TitleBrown)
+        }
     }
 }
 

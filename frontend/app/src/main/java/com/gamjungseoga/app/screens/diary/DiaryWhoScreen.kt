@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
-import com.gamjungseoga.app.ui.theme.PretendardFontFamily
+import com.gamjungseoga.app.ui.theme.OmyuPrettyFontFamily
 import com.gamjungseoga.app.ui.theme.TitleBrown
 import java.time.LocalDate
 
@@ -91,7 +91,7 @@ fun DiaryWhoScreen(
         Spacer(Modifier.height(4.dp))
         Text(
             "복수 응답이 가능해요",
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily),
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = OmyuPrettyFontFamily),
             color = NavInactiveGray,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
@@ -125,7 +125,7 @@ fun DiaryWhoScreen(
 }
 
 private val WhoChipTextStyle
-    @Composable get() = MaterialTheme.typography.bodyMedium.copy(fontFamily = PretendardFontFamily, fontSize = 14.sp)
+    @Composable get() = MaterialTheme.typography.bodyMedium.copy(fontFamily = OmyuPrettyFontFamily, fontSize = 14.sp)
 
 // 피그마처럼 얇은 테두리/낮은 높이의 가벼운 칩. 선택해도 칩 너비가 바뀌지 않도록 체크 표시 자리를
 // 항상 확보해 두고(미선택 시 빈 칸), 선택됐을 때만 체크를 그린다. 너비가 바뀌면 FlowRow 줄바꿈이

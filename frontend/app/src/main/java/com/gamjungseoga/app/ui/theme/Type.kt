@@ -39,11 +39,13 @@ val SCoreDreamFontFamily = FontFamily(
 
 // 일기 본문 전용 스타일 (DiaryDetailScreen/DiaryCompleteScreen 공용).
 // 긴 문단이라 공용 bodyMedium(16sp/18sp)은 너무 빡빡해서, 피그마처럼 행간을 글자 크기의 약 1.6배로 잡음.
+// 글자색도 여기서 정하므로 쓰는 쪽에서 color를 따로 넘기지 않는다.
 val DiaryBodyTextStyle = TextStyle(
     fontFamily = OmyuPrettyFontFamily,
+    color = DiaryBodyGray,
     fontWeight = FontWeight.Normal,
-    fontSize = 16.sp,
-    lineHeight = 26.sp
+    fontSize = 18.sp,
+    lineHeight = 29.sp
 )
 
 // 머티리얼 기본 Typography(크기/줄간격/자간 등)를 기준으로 fontFamily만 OmyuPretty로 바꿔둔

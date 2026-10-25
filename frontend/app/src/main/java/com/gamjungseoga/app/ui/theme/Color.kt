@@ -70,3 +70,6 @@ val FoldBackGray = Color(0xFFF8F8F8)
 val ButtonMint = Color(0xFF7A9D92)
 val WheelDim = Color(0xFFDFDFDF)
 val CalendarCellGray = Color(0xFFD9D9D9)
+
+// 일기 본문(DiaryBodyTextStyle) 글자색
+val DiaryBodyGray = Color(0xFF5B5B5B)
