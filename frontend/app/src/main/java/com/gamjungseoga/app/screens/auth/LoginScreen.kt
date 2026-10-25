@@ -111,6 +111,9 @@ fun LoginScreen(
             enabled = !isLoading,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
+        // 피그마처럼 버튼 묶음이 바닥에 붙지 않고 화면 세로 60~70% 지점에 오도록 위/아래 여백을 같은
+        // 비율로 나눔. 키보드가 올라와 weight 여백이 0이 돼도 버튼이 키보드에 붙지 않게 24dp는 따로 둠.
+        Spacer(Modifier.weight(1f))
         Spacer(Modifier.height(24.dp))
     }
 }

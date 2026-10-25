@@ -43,7 +43,6 @@ import com.gamjungseoga.app.network.describeHttpException
 import com.gamjungseoga.app.network.limitErrorMessageLength
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.CalendarCellGray
-import com.gamjungseoga.app.ui.theme.CountLabelBrown
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
 import com.gamjungseoga.app.ui.theme.SolidGreen
@@ -90,7 +89,7 @@ fun AuthTopBar(title: String, onBack: (() -> Unit)? = null) {
 
 @Composable
 fun AuthFieldLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.labelSmall, color = CountLabelBrown, modifier = modifier)
+    Text(text, style = MaterialTheme.typography.labelSmall, color = MonthLabelGray, modifier = modifier)
 }
 
 @Composable
