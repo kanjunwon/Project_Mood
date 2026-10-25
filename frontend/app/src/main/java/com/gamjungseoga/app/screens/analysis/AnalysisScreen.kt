@@ -69,7 +69,6 @@ import com.gamjungseoga.app.components.EmotionSummaryCard
 import com.gamjungseoga.app.components.PersonPlaceInfoCard
 import com.gamjungseoga.app.components.TopEmotionsBarCard
 import com.gamjungseoga.app.components.WheelPicker
-import com.gamjungseoga.app.components.defaultEmotionBarMaxHeight
 import com.gamjungseoga.app.emotion.EmotionGroup
 import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.ui.theme.AccentBlue
@@ -119,7 +118,6 @@ private fun toTopEmotionBars(scores: List<EmotionScore>): List<EmotionBar> {
         EmotionBar(
             label = item.emotion,
             percent = percent,
-            barHeight = defaultEmotionBarMaxHeight * (percent / 100f).coerceAtLeast(0.15f),
             color = emotionColorFor(item.emotion)
         )
     }

@@ -19,18 +19,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamjungseoga.app.R
@@ -46,25 +48,19 @@ import com.gamjungseoga.app.ui.theme.TitleBrown
 // 화면마다 본문 폰트(Pretendard/S-Core Dream)가 다르게 쓰이는 건 의도된 디자인이라 fontFamily를
 // 파라미터로 받는다.
 
-data class EmotionBar(val label: String, val percent: Int, val barHeight: Dp, val color: Color)
-
-val defaultEmotionBarMaxHeight = 138.dp
+// 막대 높이는 퍼센트 글자 크기에 따라 달라지므로 여기 담지 않고 TopEmotionsBarCard가 percent로 계산한다.
+data class EmotionBar(val label: String, val percent: Int, val color: Color)
 
 // emotion_scores(감정별 0~1 점수)에서 상위 3개를 뽑아 막대그래프용 데이터로 변환.
 // DiaryGenerateResponse/DiaryEntry 둘 다 이 모양(Map<String, Double>)의 emotion_scores를 내려준다.
 // 막대 색은 순위가 아니라 감정 이름으로 정한다(emotionColorFor).
-fun topEmotionBarsFromScores(
-    scores: Map<String, Double>?,
-    maxBarHeight: Dp = defaultEmotionBarMaxHeight
-): List<EmotionBar> {
+fun topEmotionBarsFromScores(scores: Map<String, Double>?): List<EmotionBar> {
     if (scores.isNullOrEmpty()) return emptyList()
     val top3 = scores.entries.sortedByDescending { it.value }.take(3)
     return top3.map { (label, score) ->
-        val percent = (score * 100).toInt().coerceIn(0, 100)
         EmotionBar(
             label = label,
-            percent = percent,
-            barHeight = maxBarHeight * (percent / 100f).coerceAtLeast(0.15f),
+            percent = (score * 100).toInt().coerceIn(0, 100),
             color = emotionColorFor(label)
         )
     }
@@ -160,7 +156,15 @@ fun EmotionSummaryCard(
     }
 }
 
+private val emotionBarMaxHeight = 138.dp
+private val emotionBarCornerRadius = 24.dp
+private val emotionBarSpacing = 12.dp
+private val percentLabelVerticalPadding = 12.dp
+
 // "주요 감정" 카드: emotionBars 상위 3개를 비율에 따른 높이의 막대로 보여준다.
+// 피그마처럼 비율이 아무리 낮아도 퍼센트 글자는 막대 안(흰색)에 들어가야 해서, 최소 높이를
+// "글자 높이 + 위아래 여백"으로 잡고 그 위에 비율만큼 높이를 더한다(0%면 최소 높이, 100%면 최대 높이).
+// 세 막대는 카드 폭을 같은 비율로 나눠 갖고, 사이 간격도 일정하다.
 @Composable
 fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, modifier: Modifier = Modifier) {
     Surface(
@@ -183,25 +187,39 @@ fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, mo
                 )
             }
             Spacer(Modifier.height(24.dp))
+            val percentStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = fontFamily, fontWeight = FontWeight.Bold)
+            // 글자 높이는 실제로 재서(시스템 글꼴 크기 설정 반영) 큰 글꼴에서도 막대 안에서 잘리지 않게 함.
+            val textMeasurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val percentTextHeight = remember(percentStyle, density) {
+                with(density) { textMeasurer.measure("100%", percentStyle).size.height.toDp() }
+            }
+            val minBarHeight = percentLabelVerticalPadding * 2 + percentTextHeight
+            // 글꼴이 아주 커서 최소 높이가 최대 높이를 넘는 경우에도 비율 차이는 보이도록 최대 높이를 같이 늘림
+            val maxBarHeight = maxOf(emotionBarMaxHeight, minBarHeight * 2)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.spacedBy(emotionBarSpacing),
                 verticalAlignment = Alignment.Bottom
             ) {
                 emotionBars.forEach { bar ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val barHeight = minBarHeight + (maxBarHeight - minBarHeight) * (bar.percent / 100f)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Box(
                             modifier = Modifier
-                                .width(88.dp)
-                                .height(bar.barHeight)
-                                .background(bar.color, RoundedCornerShape(16.dp)),
+                                .fillMaxWidth()
+                                .height(barHeight)
+                                .background(bar.color, RoundedCornerShape(emotionBarCornerRadius)),
                             contentAlignment = Alignment.TopCenter
                         ) {
                             Text(
                                 "${bar.percent}%",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = fontFamily, fontWeight = FontWeight.Bold),
+                                style = percentStyle,
                                 color = Color.White,
-                                modifier = Modifier.padding(top = 12.dp)
+                                modifier = Modifier.padding(top = percentLabelVerticalPadding)
                             )
                         }
                         Spacer(Modifier.height(8.dp))
@@ -212,6 +230,8 @@ fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, mo
                         )
                     }
                 }
+                // 감정이 3개 미만일 때 막대가 카드 폭 전체로 늘어나지 않게 빈 자리를 채워 너비를 유지
+                repeat((3 - emotionBars.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
