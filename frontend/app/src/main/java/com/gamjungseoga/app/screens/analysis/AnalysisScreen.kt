@@ -70,13 +70,13 @@ import com.gamjungseoga.app.components.PersonPlaceInfoCard
 import com.gamjungseoga.app.components.TopEmotionsBarCard
 import com.gamjungseoga.app.components.WheelPicker
 import com.gamjungseoga.app.components.defaultEmotionBarMaxHeight
-import com.gamjungseoga.app.components.defaultEmotionBarPalette
+import com.gamjungseoga.app.emotion.EmotionGroup
+import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.ui.theme.AccentBlue
 import com.gamjungseoga.app.ui.theme.AccentGreen
 import com.gamjungseoga.app.ui.theme.AccentNavy
 import com.gamjungseoga.app.ui.theme.AccentOrange
 import com.gamjungseoga.app.ui.theme.AccentPurple
-import com.gamjungseoga.app.ui.theme.AccentTerracotta
 import com.gamjungseoga.app.ui.theme.BodyGray
 import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.ChartMint
@@ -108,20 +108,19 @@ private enum class ReportTab(val label: String) { DAILY("일간"), MONTHLY("월�
 private val analysisDateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
 private val analysisMonthFormatter = DateTimeFormatter.ofPattern("yyyy.MM")
 
-private val monthlyBarColors = listOf(AccentBlue, AccentPurple, AccentNavy)
-
 // GET /stats/daily, /stats/monthly의 top3_emotions는 여러 일기의 점수를 그냥 합산한 값이라(1.0 안
-// 넘게 정규화돼있지 않음) 3개 막대끼리 상대 비중으로 다시 나눠서 60/30/10 같은 퍼센트를 만듦
-private fun toTopEmotionBars(scores: List<EmotionScore>, palette: List<Color> = defaultEmotionBarPalette): List<EmotionBar> {
+// 넘게 정규화돼있지 않음) 3개 막대끼리 상대 비중으로 다시 나눠서 60/30/10 같은 퍼센트를 만듦.
+// 막대 색은 순위가 아니라 감정 이름으로 정한다(emotionColorFor) - 일간/월간 공통.
+private fun toTopEmotionBars(scores: List<EmotionScore>): List<EmotionBar> {
     val total = scores.sumOf { it.score }
     if (scores.isEmpty() || total <= 0) return emptyList()
-    return scores.mapIndexed { index, item ->
+    return scores.map { item ->
         val percent = (item.score / total * 100).toInt().coerceIn(0, 100)
         EmotionBar(
             label = item.emotion,
             percent = percent,
             barHeight = defaultEmotionBarMaxHeight * (percent / 100f).coerceAtLeast(0.15f),
-            color = palette[index % palette.size]
+            color = emotionColorFor(item.emotion)
         )
     }
 }
@@ -217,15 +216,16 @@ private fun toPills(scores: List<EmotionScore>, palette: List<Pair<Color, Color>
 
 private data class EmotionCategory(val label: String, val color: Color)
 
+// 범례 이름은 기존 표기를 유지하고, 색은 EmotionGroup 8그룹 색과 같은 순서로 대응.
 private val monthlyEmotionCategories = listOf(
-    EmotionCategory("긍정", RibbonPink),
-    EmotionCategory("활력", AccentOrange),
-    EmotionCategory("성취", AccentGreen),
-    EmotionCategory("안정", AccentBlue),
-    EmotionCategory("침체", AccentNavy),
-    EmotionCategory("긴장", AccentPurple),
-    EmotionCategory("고갈", AccentTerracotta),
-    EmotionCategory("분노", ChartMint)
+    EmotionCategory("긍정", EmotionGroup.RISING.color),
+    EmotionCategory("활력", EmotionGroup.ACTIVE.color),
+    EmotionCategory("성취", EmotionGroup.RELIEF.color),
+    EmotionCategory("안정", EmotionGroup.STABLE.color),
+    EmotionCategory("침체", EmotionGroup.WARY.color),
+    EmotionCategory("긴장", EmotionGroup.STAGNANT.color),
+    EmotionCategory("고갈", EmotionGroup.DRAINED.color),
+    EmotionCategory("분노", EmotionGroup.EXPLOSIVE.color)
 )
 
 data class FeltEmotionBar(val label: String, val percent: Int, val color: Color)
@@ -262,7 +262,7 @@ private fun toMonthlyReportData(
     positiveDayStats: DailyStatsResponse?,
     negativeDayStats: DailyStatsResponse?
 ): MonthlyReportData {
-    val topBars = toTopEmotionBars(stats.top3Emotions, monthlyBarColors)
+    val topBars = toTopEmotionBars(stats.top3Emotions)
     return MonthlyReportData(
         topEmotion = stats.topEmotion ?: "-",
         topEmotionPercent = topBars.firstOrNull()?.percent ?: 0,
@@ -418,7 +418,9 @@ fun AnalysisScreen() {
                             titlePrefix = "오늘 가장 많이 느낀 감정은\n",
                             emotion = stats.topEmotion ?: "-",
                             percent = bars.firstOrNull()?.percent ?: 0,
-                            fontFamily = SCoreDreamFontFamily
+                            fontFamily = SCoreDreamFontFamily,
+                            // "-" 자리표시자로 색을 찾으면 미등록 감정 로그가 찍히므로 원래 값(null 가능)으로 찾음
+                            emotionColor = emotionColorFor(stats.topEmotion)
                         )
                     }
                     item {

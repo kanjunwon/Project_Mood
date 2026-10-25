@@ -35,11 +35,9 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamjungseoga.app.R
 import com.gamjungseoga.app.emotion.drawableForEmotion
-import com.gamjungseoga.app.ui.theme.AccentGreen
+import com.gamjungseoga.app.emotion.emotionColorFor
 import com.gamjungseoga.app.ui.theme.BodyGray
-import com.gamjungseoga.app.ui.theme.ChartMint
 import com.gamjungseoga.app.ui.theme.HighlightMint
-import com.gamjungseoga.app.ui.theme.RibbonPink
 import com.gamjungseoga.app.ui.theme.SurfaceColor
 import com.gamjungseoga.app.ui.theme.TitleBrown
 
@@ -50,25 +48,24 @@ import com.gamjungseoga.app.ui.theme.TitleBrown
 
 data class EmotionBar(val label: String, val percent: Int, val barHeight: Dp, val color: Color)
 
-val defaultEmotionBarPalette = listOf(ChartMint, AccentGreen, RibbonPink)
 val defaultEmotionBarMaxHeight = 138.dp
 
 // emotion_scores(감정별 0~1 점수)에서 상위 3개를 뽑아 막대그래프용 데이터로 변환.
 // DiaryGenerateResponse/DiaryEntry 둘 다 이 모양(Map<String, Double>)의 emotion_scores를 내려준다.
+// 막대 색은 순위가 아니라 감정 이름으로 정한다(emotionColorFor).
 fun topEmotionBarsFromScores(
     scores: Map<String, Double>?,
-    palette: List<Color> = defaultEmotionBarPalette,
     maxBarHeight: Dp = defaultEmotionBarMaxHeight
 ): List<EmotionBar> {
     if (scores.isNullOrEmpty()) return emptyList()
     val top3 = scores.entries.sortedByDescending { it.value }.take(3)
-    return top3.mapIndexed { index, (label, score) ->
+    return top3.map { (label, score) ->
         val percent = (score * 100).toInt().coerceIn(0, 100)
         EmotionBar(
             label = label,
             percent = percent,
             barHeight = maxBarHeight * (percent / 100f).coerceAtLeast(0.15f),
-            color = palette[index % palette.size]
+            color = emotionColorFor(label)
         )
     }
 }
@@ -106,7 +103,7 @@ fun EmotionBadge(topEmotion: String, modifier: Modifier = Modifier) {
             Box(
                 modifier = Modifier
                     .size(10.dp)
-                    .background(ChartMint, CircleShape)
+                    .background(emotionColorFor(topEmotion), CircleShape)
             )
             Spacer(Modifier.width(6.dp))
             Text(topEmotion, style = MaterialTheme.typography.labelSmall, color = TitleBrown)
@@ -123,7 +120,7 @@ fun EmotionSummaryCard(
     percent: Int,
     fontFamily: FontFamily,
     modifier: Modifier = Modifier,
-    emotionColor: Color = HighlightMint
+    emotionColor: Color = emotionColorFor(emotion)
 ) {
     Surface(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),

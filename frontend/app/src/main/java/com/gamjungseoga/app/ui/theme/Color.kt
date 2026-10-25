@@ -49,6 +49,20 @@ val PillOrangeBg = Color(0xFFFFF3E5)
 val PillBlueBg = Color(0xFFDFEFF9)
 val PillPurpleBg = Color(0xFFD9E3F4)
 
+// 디자이너가 색채심리학 기준으로 확정한 감정 8그룹 색상 (emotion/EmotionAssets.kt의 EmotionGroup이 사용).
+// 값은 위 RibbonPink/AccentOrange/ChartMint/AccentGreen/AccentBlue/AccentNavy/AccentPurple/
+// AccentTerracotta와 같지만, 그쪽은 장식/버튼에도 쓰이므로 감정용은 따로 둬서 한쪽만 바뀌어도 서로 안 엮이게 함.
+val EmotionRising = Color(0xFFE4A4C2)    // 상승형
+val EmotionActive = Color(0xFFFABE7D)    // 활동형
+val EmotionRelief = Color(0xFF8CDECE)    // 해소형
+val EmotionStable = Color(0xFFC5E8A8)    // 안정형
+val EmotionWary = Color(0xFF79BCE2)      // 경계형
+val EmotionStagnant = Color(0xFF5071A9)  // 침체형
+val EmotionDrained = Color(0xFF957AA1)   // 소모형
+val EmotionExplosive = Color(0xFFB26D6D) // 폭발형
+// 매핑에 없는 감정용. 막대 위에 흰 글씨(퍼센트)가 올라가서 EmptyGray(#EDEDED)는 글씨가 안 보여 한 톤 진하게 둠.
+val EmotionUnknown = Color(0xFFACACAC)
+
 // 피그마 "메인" 화면 헤더 접힌 모서리(node 1:118) 뒷면 색상
 val FoldBackGray = Color(0xFFF8F8F8)
 
