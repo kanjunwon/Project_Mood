@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 시스템 스플래시(Android 12+)에서 가운데 아이콘을 비워두기 위한 투명 drawable.
+     실제 로고 화면은 바로 이어서 뜨는 Compose SplashScreen이 그린다. -->
+<color xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@android:color/transparent" />

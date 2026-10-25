@@ -1,3 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.Gamjeongseoga" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Gamjeongseoga" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 시스템 스플래시는 앱 배경색 + 빈 아이콘으로 두고, 바로 이어지는 Compose 스플래시
+             (screens/splash/SplashScreen.kt)와 끊김 없이 이어지게 한다. -->
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:windowSplashScreenBackground">@color/app_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_empty</item>
+    </style>
 </resources>

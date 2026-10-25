@@ -13,7 +13,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -82,6 +85,7 @@ import com.gamjungseoga.app.screens.settings.TermsOfServiceScreen
 import com.gamjungseoga.app.screens.settings.SettingsViewModel
 import com.gamjungseoga.app.screens.settings.genderOptions
 import com.gamjungseoga.app.screens.settings.jobOptions
+import com.gamjungseoga.app.screens.splash.SplashScreen
 import com.gamjungseoga.app.ui.theme.BackgroundColor
 import com.gamjungseoga.app.ui.theme.GamjeongseogaTheme
 
@@ -91,7 +95,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GamjeongseogaTheme {
-                GamjeongseogaApp()
+                // 스플래시를 먼저 보여준 뒤 GamjeongseogaApp(토큰 유무로 홈/로그인 분기)을 그린다.
+                // 화면 회전 등으로 다시 그려질 때 스플래시가 또 뜨지 않게 rememberSaveable로 기억.
+                var showSplash by rememberSaveable { mutableStateOf(true) }
+                if (showSplash) {
+                    SplashScreen(onFinished = { showSplash = false })
+                } else {
+                    GamjeongseogaApp()
+                }
             }
         }
     }

@@ -1,3 +1,6 @@
 <resources>
-    <color name="ic_launcher_background">#FFF6E9</color>
+    <!-- 앱 아이콘 배경: 앱 헤더/버튼에 쓰는 SolidGreen(#577E75)과 같은 색 -->
+    <color name="ic_launcher_background">#577E75</color>
+    <!-- 앱 전체 배경(ui/theme/Color.kt의 BackgroundColor)과 같은 색. 시스템 스플래시에서 사용 -->
+    <color name="app_background">#F7F7F7</color>
 </resources>
