@@ -39,19 +39,19 @@ fun BottomNavBar(
     onNavigate: (String) -> Unit,
     onAddClick: () -> Unit
 ) {
-    // 바깥 박스: 실제 바(72dp)보다 높이를 크게(88dp) 잡아서 위쪽에 FAB(+)가
+    // 바깥 박스: 실제 바(84dp)보다 높이를 크게(100dp) 잡아서 위쪽에 FAB(+)가
     // 튀어나올 여유 공간을 확보하는 컨테이너
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(88.dp)
+            .height(100.dp)
     ) {
         // 흰색 바탕의 실제 네비게이션 바 (홈/아카이브/분석/설정 4개 탭)
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(72.dp),
+                .height(84.dp),
             color = SurfaceColor,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             shadowElevation = 8.dp
@@ -78,7 +78,7 @@ fun BottomNavBar(
                 }
             }
         }
-        // 바 위에 겹쳐서 튀어나오는 중앙 + 버튼 (바깥 박스의 여유 공간 88-72=16dp 안에 위치)
+        // 바 위에 겹쳐서 튀어나오는 중앙 + 버튼 (바깥 박스의 여유 공간 100-84=16dp만큼 바 위로 튀어나옴)
         FloatingActionButton(
             onClick = onAddClick,
             modifier = Modifier.align(Alignment.TopCenter),
@@ -107,6 +107,7 @@ private fun NavItem(iconRes: Int, label: String, selected: Boolean, onClick: () 
             colorFilter = ColorFilter.tint(tint),
             modifier = Modifier.size(20.dp)
         )
+        Spacer(modifier = Modifier.height(6.dp))
         // 하단 네비게이션 라벨만 Pretendard 폰트 사용 (나머지 화면은 Omyu Pretty)
         Text(
             label,
