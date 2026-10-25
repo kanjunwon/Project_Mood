@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -95,13 +97,15 @@ fun DiaryWhoScreen(
             color = NavInactiveGray,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(20.dp - whoCheckBadgeOverhang))
+        // padding을 verticalScroll 뒤(스크롤 영역 안쪽)에 둬서, 칩 모서리 밖으로 걸치는 체크 배지가
+        // 스크롤 영역 경계(위/오른쪽)에서 잘리지 않게 한다. 위쪽 여백은 위 Spacer에서 그만큼 뺌.
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = whoCheckBadgeOverhang)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 diaryWhoOptionGroups.forEach { group ->
@@ -127,36 +131,51 @@ fun DiaryWhoScreen(
 private val WhoChipTextStyle
     @Composable get() = MaterialTheme.typography.bodyMedium.copy(fontFamily = OmyuPrettyFontFamily, fontSize = 14.sp)
 
-// 피그마처럼 얇은 테두리/낮은 높이의 가벼운 칩. 선택해도 칩 너비가 바뀌지 않도록 체크 표시 자리를
-// 항상 확보해 두고(미선택 시 빈 칸), 선택됐을 때만 체크를 그린다. 너비가 바뀌면 FlowRow 줄바꿈이
-// 다시 계산돼서 칩들이 다른 줄로 튀기 때문.
+// 체크 배지가 칩 오른쪽 위 모서리 밖으로 걸치는 양. 칩 목록 스크롤 영역이 위/오른쪽에 이만큼 여유를
+// 둬야 배지가 잘리지 않는다(DiaryWhoScreen의 칩 Column padding 참고).
+private val whoCheckBadgeSize = 16.dp
+private val whoCheckBadgeOverhang = 5.dp
+
+// 피그마처럼 얇은 테두리/낮은 높이의 가벼운 칩. 선택되면 오른쪽 위 모서리에 작은 원형 체크 배지가
+// 겹쳐 붙는다. 배지는 칩 바깥에 그려서 칩 너비가 바뀌지 않으므로(바뀌면 FlowRow 줄바꿈이 다시
+// 계산돼서 칩들이 다른 줄로 튐) 텍스트도 항상 칩 가운데에 온다.
+// 좌우 padding 25dp = 예전 16dp + 텍스트 옆 체크 자리(4 + 14dp)의 절반: 칩 크기를 예전과 같게 유지.
 @Composable
 private fun WhoChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .then(
-                if (selected) {
-                    Modifier.background(CountLabelBrown)
-                } else {
-                    Modifier
-                        .background(Color.White)
-                        .border(1.dp, NavInactiveGray, RoundedCornerShape(50))
-                }
+    Box {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .then(
+                    if (selected) {
+                        Modifier.background(CountLabelBrown)
+                    } else {
+                        Modifier
+                            .background(Color.White)
+                            .border(1.dp, NavInactiveGray, RoundedCornerShape(50))
+                    }
+                )
+                .clickable { onClick() }
+                .padding(horizontal = 25.dp, vertical = 8.dp)
+        ) {
+            Text(
+                label,
+                style = WhoChipTextStyle,
+                color = if (selected) Color.White else TitleBrown
             )
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Text(
-            label,
-            style = WhoChipTextStyle,
-            color = if (selected) Color.White else TitleBrown
-        )
-        Spacer(Modifier.width(4.dp))
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(14.dp)) {
-            if (selected) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+        }
+        if (selected) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = whoCheckBadgeOverhang, y = -whoCheckBadgeOverhang)
+                    .size(whoCheckBadgeSize)
+                    .background(TitleBrown, CircleShape)
+                    .border(1.5.dp, Color.White, CircleShape)
+            ) {
+                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
             }
         }
     }

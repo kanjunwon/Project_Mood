@@ -494,12 +494,13 @@ private fun MonthlyEmotionCard(item: MonthlyEmotion, index: Int) {
 @Composable
 private fun BoxScope.TapeAccent(color: Color) {
     // 카드 상단 가운데에 가로로 붙인 마스킹테이프: 절반은 카드 위, 절반은 카드 밖으로 걸침.
+    // 피그마처럼 카드 폭(114dp)의 1/3 정도 되는 짧고 얇은 조각.
     // 테이프 느낌을 위해 살짝 반투명하게 해서 아래 그림이 비치게 함.
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .offset(y = (-10).dp)
-            .size(width = 90.dp, height = 20.dp)
+            .offset(y = (-5).dp)
+            .size(width = 38.dp, height = 10.dp)
             .background(color.copy(alpha = 0.9f), RoundedCornerShape(1.dp))
     )
 }

@@ -80,8 +80,6 @@ import com.gamjungseoga.app.ui.theme.ButtonMint
 import com.gamjungseoga.app.ui.theme.EmptyGray
 import com.gamjungseoga.app.ui.theme.MonthLabelGray
 import com.gamjungseoga.app.ui.theme.NavInactiveGray
-import com.gamjungseoga.app.ui.theme.NegativeDateNavy
-import com.gamjungseoga.app.ui.theme.PositiveDatePink
 import com.gamjungseoga.app.ui.theme.SCoreDreamFontFamily
 import com.gamjungseoga.app.ui.theme.SolidGreen
 import com.gamjungseoga.app.ui.theme.SurfaceColor
@@ -523,7 +521,8 @@ fun AnalysisScreen() {
                         TopFeltDayCard(
                             subtitlePrefix = "가장 긍정적인 감정을 느낀 날은 ",
                             dateHighlight = monthlyReport.positiveFeltDate,
-                            dateColor = PositiveDatePink,
+                            // 그날 대표 감정(top3 1위, 막대와 같은 기준) 색을 흰 배경에서 읽히게 대비 처리
+                            dateColor = emotionTextColorFor(monthlyReport.positiveFeltBars.firstOrNull()?.label),
                             description = monthlyReport.positiveFeltBars.firstOrNull()?.label?.let { "$it 감정이 가장 많았어요" }
                                 ?: "기록된 감정이 없어요",
                             bars = monthlyReport.positiveFeltBars
@@ -534,7 +533,7 @@ fun AnalysisScreen() {
                         TopFeltDayCard(
                             subtitlePrefix = "가장 부정적인 감정을 느낀 날은 ",
                             dateHighlight = monthlyReport.negativeFeltDate,
-                            dateColor = NegativeDateNavy,
+                            dateColor = emotionTextColorFor(monthlyReport.negativeFeltBars.firstOrNull()?.label),
                             description = monthlyReport.negativeFeltBars.firstOrNull()?.label?.let { "$it 감정이 가장 많았어요" }
                                 ?: "기록된 감정이 없어요",
                             bars = monthlyReport.negativeFeltBars
