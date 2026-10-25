@@ -197,10 +197,14 @@ private val emotionBarMaxHeight = 138.dp
 private val emotionBarCornerRadius = 24.dp
 private val emotionBarSpacing = 12.dp
 private val percentLabelVerticalPadding = 12.dp
+// 0%여도 그 감정이 목록에 있다는 건 보이도록 남겨두는 아주 낮은 막대 높이
+private val emotionBarMinHeight = 4.dp
+private val percentLabelOutsideGap = 4.dp
 
 // "주요 감정" 카드: emotionBars 상위 3개를 비율에 따른 높이의 막대로 보여준다.
-// 피그마처럼 비율이 아무리 낮아도 퍼센트 글자는 막대 안(흰색)에 들어가야 해서, 최소 높이를
-// "글자 높이 + 위아래 여백"으로 잡고 그 위에 비율만큼 높이를 더한다(0%면 최소 높이, 100%면 최대 높이).
+// 막대 높이는 비율 그대로(최대 높이 × 퍼센트)라서 99%/0%/0%처럼 쏠린 데이터도 사실대로 읽힌다.
+// 퍼센트 글자는 막대 안에 "글자 높이 + 위아래 여백"이 들어갈 만큼 높을 때만 막대 안(흰색)에 넣고,
+// 그보다 낮은 막대(10% 미만은 항상 해당)는 막대 바로 위에 회색으로 표시한다.
 // 세 막대는 카드 폭을 같은 비율로 나눠 갖고, 사이 간격도 일정하다.
 @Composable
 fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, modifier: Modifier = Modifier) {
@@ -231,20 +235,27 @@ fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, mo
             val percentTextHeight = remember(percentStyle, density) {
                 with(density) { textMeasurer.measure("100%", percentStyle).size.height.toDp() }
             }
-            val minBarHeight = percentLabelVerticalPadding * 2 + percentTextHeight
-            // 글꼴이 아주 커서 최소 높이가 최대 높이를 넘는 경우에도 비율 차이는 보이도록 최대 높이를 같이 늘림
-            val maxBarHeight = maxOf(emotionBarMaxHeight, minBarHeight * 2)
+            // 글자를 막대 안에 넣으려면 필요한 높이
+            val insideLabelHeight = percentLabelVerticalPadding * 2 + percentTextHeight
+            // 글꼴이 아주 커도 100%짜리 막대에는 글자가 안에 들어가도록 최대 높이를 같이 늘림
+            val maxBarHeight = maxOf(emotionBarMaxHeight, insideLabelHeight * 2)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(emotionBarSpacing),
                 verticalAlignment = Alignment.Bottom
             ) {
                 emotionBars.forEach { bar ->
-                    val barHeight = minBarHeight + (maxBarHeight - minBarHeight) * (bar.percent / 100f)
+                    val barHeight = (maxBarHeight * (bar.percent / 100f)).coerceAtLeast(emotionBarMinHeight)
+                    val labelInside = bar.percent >= 10 && barHeight >= insideLabelHeight
                     Column(
                         modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        if (!labelInside) {
+                            // 연한 감정 색(안정형 등)은 흰 카드 배경에서 안 읽혀서 막대 밖 글자는 회색
+                            Text("${bar.percent}%", style = percentStyle, color = BodyGray)
+                            Spacer(Modifier.height(percentLabelOutsideGap))
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -252,12 +263,14 @@ fun TopEmotionsBarCard(emotionBars: List<EmotionBar>, fontFamily: FontFamily, mo
                                 .background(bar.color, RoundedCornerShape(emotionBarCornerRadius)),
                             contentAlignment = Alignment.TopCenter
                         ) {
-                            Text(
-                                "${bar.percent}%",
-                                style = percentStyle,
-                                color = Color.White,
-                                modifier = Modifier.padding(top = percentLabelVerticalPadding)
-                            )
+                            if (labelInside) {
+                                Text(
+                                    "${bar.percent}%",
+                                    style = percentStyle,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(top = percentLabelVerticalPadding)
+                                )
+                            }
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(

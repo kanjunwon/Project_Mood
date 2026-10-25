@@ -859,6 +859,9 @@ private fun EmotionDistributionCard(dayColors: List<Color?>) {
 }
 
 private val feltBarLabelHorizontalPadding = 10.dp
+// 0%여도 그 감정 줄에 막대가 있다는 건 보이도록 남겨두는 아주 짧은 막대 너비
+private val feltBarMinWidth = 4.dp
+private val feltBarLabelOutsideGap = 6.dp
 
 @Composable
 private fun TopFeltDayCard(
@@ -894,14 +897,15 @@ private fun TopFeltDayCard(
             Spacer(Modifier.height(20.dp))
             val maxPercent = bars.maxOfOrNull { it.percent } ?: 0
             val percentStyle = MaterialTheme.typography.labelSmall.copy(fontFamily = SCoreDreamFontFamily, fontWeight = FontWeight.Bold)
-            // 주요 감정 세로 막대와 같은 원리: 퍼센트 글자 폭(실측, 글꼴 크기 설정 반영) + 좌우 여백을 최소 너비로
-            // 보장하고, 그 위에 비율만큼 길이를 더한다(가장 큰 값이 꽉 찬 너비).
+            // 주요 감정 세로 막대와 같은 원리: 막대 길이는 비율 그대로(가장 큰 값이 꽉 찬 너비, 0%는 아주
+            // 짧은 최소 너비)로 그리고, 퍼센트 글자는 막대 안에 "글자 폭(실측, 글꼴 크기 설정 반영) + 좌우
+            // 여백"이 들어갈 때만 안(흰색)에, 아니면 막대 오른쪽 바깥에 회색으로 둔다.
             val textMeasurer = rememberTextMeasurer()
             val density = LocalDensity.current
             val percentTextWidth = remember(percentStyle, density) {
                 with(density) { textMeasurer.measure("100%", percentStyle).size.width.toDp() }
             }
-            val minBarWidth = feltBarLabelHorizontalPadding * 2 + percentTextWidth
+            val insideLabelWidth = feltBarLabelHorizontalPadding * 2 + percentTextWidth
             bars.forEach { bar ->
                 Row(
                     modifier = Modifier
@@ -924,22 +928,40 @@ private fun TopFeltDayCard(
                     ) {
                         val fullWidth = maxWidth
                         val ratio = if (maxPercent > 0) bar.percent.toFloat() / maxPercent else 0f
-                        val barWidth = (minBarWidth + (fullWidth - minBarWidth) * ratio).coerceAtMost(fullWidth)
-                        Box(
-                            modifier = Modifier
-                                .width(barWidth)
-                                .fillMaxHeight()
-                                .background(bar.color, RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.CenterEnd
+                        val barWidth = (fullWidth * ratio).coerceIn(feltBarMinWidth, fullWidth)
+                        val labelInside = barWidth >= insideLabelWidth
+                        Row(
+                            modifier = Modifier.fillMaxHeight(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "${bar.percent}%",
-                                modifier = Modifier.padding(end = feltBarLabelHorizontalPadding),
-                                style = percentStyle,
-                                color = Color.White,
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .width(barWidth)
+                                    .fillMaxHeight()
+                                    .background(bar.color, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                if (labelInside) {
+                                    Text(
+                                        "${bar.percent}%",
+                                        modifier = Modifier.padding(end = feltBarLabelHorizontalPadding),
+                                        style = percentStyle,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                            if (!labelInside) {
+                                Spacer(Modifier.width(feltBarLabelOutsideGap))
+                                Text(
+                                    "${bar.percent}%",
+                                    style = percentStyle,
+                                    color = BodyGray,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
