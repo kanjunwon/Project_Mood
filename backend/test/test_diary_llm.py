@@ -65,14 +65,15 @@ def test_timings_optional(fake_llm):
 import hashlib
 
 # main(b266c31)의 SYSTEM_PREAMBLE + FEWSHOT_EXAMPLES sha256. 기본 프롬프트가 바뀌면 실패해야 함.
-MAIN_PROMPT_SHA256 = "d8cf44825df360dfd886b3e6372286d125be90e55c4154ae6eee874e43d5763f"
+MAIN_PROMPT_SHA256 = "c7a1071a5e05de2049305a92a3d26ae7e2dc287f33a72bc24ec8a8a02432b1a1"
 CONTENT = "무엇을: X\n이유: Y\n누구와: 혼자\n언제: 오후 2시\n어디서: 집"
 
 
 def test_default_prompt_unchanged_from_main():
     assert hashlib.sha256((ls.SYSTEM_PREAMBLE + ls.FEWSHOT_EXAMPLES).encode()).hexdigest() == MAIN_PROMPT_SHA256
-    assert ls.build_prompt(CONTENT) == ls.build_prompt(CONTENT, "base")
-    assert ls.build_prompt(CONTENT).startswith(ls.SYSTEM_PREAMBLE + "\n" + ls.FEWSHOT_EXAMPLES)
+    # patch 10: 기본 변형을 식사시간대 단어 없는 few-shot으로 교체 (base 변형은 측정용으로 그대로 남김)
+    assert ls.build_prompt(CONTENT) == ls.build_prompt(CONTENT, "fewshot_no_mealtime")
+    assert ls.build_prompt(CONTENT).startswith(ls.SYSTEM_PREAMBLE + "\n" + ls.FEWSHOT_EXAMPLES_NO_MEALTIME)
 
 
 def test_emotion_word_variant_changes_only_rule2_tail():

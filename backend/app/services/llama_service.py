@@ -18,7 +18,8 @@ SYSTEM_PREAMBLE = (
     "'세상을 다 가진 기분' 등). 그냥 있었던 일 적고 끝내거나 사소한 잡생각으로 "
     "끝나도 된다.\n"
     "3. 문장 길이를 들쭉날쭉하게 쓴다. 짧게 끊는 문장과 길게 이어지는 문장을 섞는다.\n"
-    "4. 분량은 정해진 게 없다. 정보가 적으면 2~3문장으로 짧게 끝나도 전혀 상관없다.\n"
+    "4. 분량은 3~4문장, 100자 안팎으로 쓴다. 정보가 적어도 그날의 장소 분위기, 몸 상태, 사소한 "
+    "잡생각 같은 일반적인 배경으로 채워서 한 문장짜리로 끝내지 않는다.\n"
     "5. 디테일을 채울 땐 위험도를 구분해서 판단해라:\n"
     "   - 괜찮음: 그 장소/상황에서 흔히 있는 배경 묘사 (예: 공원이면 사람들, 생일이면 케이크 정도의 "
     "일반적인 소품) - 이 정도는 자연스러움을 위해 살짝 곁들여도 된다.\n"
@@ -236,6 +237,10 @@ for _old, _new in _FEWSHOT_MEALTIME_FIXES:
     assert FEWSHOT_EXAMPLES_NO_MEALTIME.count(_old) == 1, _old
     FEWSHOT_EXAMPLES_NO_MEALTIME = FEWSHOT_EXAMPLES_NO_MEALTIME.replace(_old, _new)
 
+# 2026-10 실기기 테스트: 기본(base) few-shot이 '저녁/아침/점심'을 쓰는 예시라 모델이 "오늘 아침 일찍…"으로 시작
+# -> 식사시간대 검증에서 3/3 불합격 -> 입력 그대로 이어붙인 안전 템플릿이 출력됨. 식사시간대 단어를 뺀 예시를 기본으로 채택.
+DEFAULT_VARIANT = "fewshot_no_mealtime"
+
 PROMPT_VARIANTS = {
     "base": (SYSTEM_PREAMBLE, FEWSHOT_EXAMPLES),
     "emotion_word": (SYSTEM_PREAMBLE_EMOTION_WORD, FEWSHOT_EXAMPLES),
@@ -244,14 +249,16 @@ PROMPT_VARIANTS = {
 
 
 def build_prompt(actual_user_content: str, variant: str | None = None) -> str:
-    if (variant or "base") not in PROMPT_VARIANTS:
+    variant = variant or DEFAULT_VARIANT
+    if variant not in PROMPT_VARIANTS:
         raise ValueError(f"알 수 없는 프롬프트 변형: {variant} (가능: {', '.join(PROMPT_VARIANTS)})")
-    preamble, fewshot = PROMPT_VARIANTS[variant or "base"]
+    preamble, fewshot = PROMPT_VARIANTS[variant]
     return (
         f"{preamble}\n"
         f"{fewshot}\n"
         f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 "
-        f"(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것):\n\n"
+        f"(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것. "
+        f"아침/점심/저녁 같은 식사 시간대 단어도 쓰지 말 것. 3~4문장으로 쓸 것):\n\n"
         f"{actual_user_content}\n"
         f"Assistant:\n"
     )
@@ -317,6 +324,21 @@ def _mock_generate(what: str) -> str:
     return f"오늘은 {what} 관련된 하루였다. 이건 목(mock) 응답이라 실제 생성된 건 아니다. 그래도 API 흐름 테스트용으로는 충분하다."
 
 
+def _repair_meal_words(text: str, context_str: str) -> str:
+    """
+    검증에서 '식사시간대 지어냄'만 걸린 후보를 버리지 않고 고친다.
+    입력(context)에 없는 아침/점심/저녁/새벽 단어를 "오늘"로 바꿈 ("오늘 아침 일찍 일어나서" -> "오늘 일어나서").
+    고친 뒤에도 validate_diary를 다시 통과해야만 채택된다 (호출하는 쪽에서 재검증).
+    """
+    out = text
+    for kw in MEALTIME_KEYWORDS:
+        if kw in context_str or kw not in out:
+            continue
+        out = re.sub(rf"(?:오늘\s*)?{kw}(?:\s*(?:일찍|늦게))?(?:에는|에도|에|엔|부터|은|는)?\s*", "오늘 ", out)
+    out = re.sub(r"(?:오늘\s*){2,}", "오늘 ", out)
+    return out.strip()
+
+
 def _safe_fallback_diary(what: str, why: str, who_str: str, when: str, where: str) -> str:
     return f"오늘은 {where}에서 {what}. {why}. 그런 하루였다."
 
@@ -377,6 +399,16 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
         else:
             print(f"  {attempt}번째 시도 불합격 ({', '.join(reasons)}): {candidate[:60]}...")
 
+    repaired = False
+    if not passed:
+        # 후보를 점수 높은 순으로 고쳐보고, 재검증을 통과하는 첫 후보를 쓴다 (입력 복붙 템플릿보다 훨씬 자연스러움)
+        for d in sorted(attempt_details, key=lambda d: d["score"], reverse=True):
+            fixed = _repair_meal_words(d["text"], context_str)
+            if fixed and fixed != d["text"].strip() and validate_diary(fixed, context_str=context_str)[0]:
+                clean_diary, passed, repaired = fixed, True, True
+                print(f"  식사시간대 단어를 고쳐서 채택: {fixed[:60]}...")
+                break
+
     if not passed:
         print(f"  경고: {MAX_RETRIES}번 다 실패, 안전 템플릿으로 대체함 (최선 후보 점수 {best_score}/9)")
         clean_diary = _safe_fallback_diary(what, why, who_str, when, where)
@@ -387,6 +419,7 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
         timings["diary_validate_sec"] = round(validate_sec, 4)
         timings["diary_attempt_details"] = attempt_details
         timings["diary_fallback"] = not passed
-        timings["prompt_variant"] = prompt_variant or "base"
+        timings["prompt_variant"] = prompt_variant or DEFAULT_VARIANT
+        timings["diary_repaired"] = repaired
 
     return clean_diary, not passed

@@ -31,6 +31,21 @@ async def lifespan(app: FastAPI):
             print(f"[시작] 모델 미리 로딩 완료 ({time.time() - start:.1f}초)")
         except Exception as e:
             print(f"[경고] 모델 미리 로딩 실패, 첫 요청 때 다시 시도함: {e!r}")
+    if not mock:
+        # ComfyUI는 서버 시작 후 첫 생성에서 체크포인트+LoRA를 올리느라 약 70초 걸림 (이후 약 8초).
+        # 백그라운드에서 한 장 미리 생성해 첫 사용자가 기다리지 않게 함. 실패해도 서버에는 영향 없음.
+        import threading
+
+        def _warmup_comfyui():
+            try:
+                from app.services.sd3_service import _submit_workflow, _wait_for_result
+                t = time.time()
+                _wait_for_result(_submit_workflow("masterpiece, 1boy, solo, gamjeong style", "text"), timeout=180)
+                print(f"[시작] ComfyUI 워밍업 완료 ({time.time() - t:.1f}초)")
+            except Exception as e:
+                print(f"[경고] ComfyUI 워밍업 실패(무시): {e!r}")
+
+        threading.Thread(target=_warmup_comfyui, daemon=True).start()
     yield
 
 

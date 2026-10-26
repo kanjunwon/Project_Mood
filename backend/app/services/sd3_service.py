@@ -69,8 +69,12 @@ def _avatar_tags(glasses: str, bangs: bool, hair_length: str, hair_color: str) -
     )
     tags.append(length_tag)
 
-    color_tag = _HAIR_COLOR_MAP.get(hair_color, hair_color if hair_color else "black hair")
-    tags.append(color_tag)
+    # 앱이 "blackhair"처럼 붙여쓴 값을 보내면 그대로 태그가 돼서 색이 안 먹었음 -> 공백/대소문자 정규화 후 매핑
+    key = re.sub(r"[\s_-]+", "", str(hair_color or "")).lower()
+    color_tag = _HAIR_COLOR_MAP.get(key)
+    if color_tag is None and key.endswith("hair") and key[:-4].isascii() and key[:-4].isalpha():
+        color_tag = _HAIR_COLOR_MAP.get(key[:-4]) or f"{key[:-4]} hair"
+    tags.append(color_tag or "black hair")
 
     return ", ".join(tags)
 
@@ -168,7 +172,19 @@ _QUALITY_TAGS = {t.strip() for t in QUALITY_PREFIX.split(",")}
 # 인원/성별 negative(girl 계열 등)는 계정/구도에 따라 아래 보정 함수들이 따로 덧붙임.
 IMAGE_NEGATIVE_BASE = (
     "(text:1.3), (signboard:1.3), (letters:1.2), keyboard, monitor, "
-    "worst quality, low quality, bad anatomy, bad hands, extra fingers, blurry, watermark, extra people"
+    "worst quality, low quality, bad anatomy, bad hands, extra fingers, blurry, watermark, extra people, "
+    "photorealistic, realistic, 3d, cyberpunk, sci-fi, futuristic, neon lights, glowing, oversaturated"
+)
+
+# LoRA 화풍을 확실히 끌어내는 태그. 품질 태그 바로 뒤(프롬프트 앞쪽)에 둔다.
+# 2026-10 테스트: 트리거(gamjeong style)가 맨 끝에 있고 컴퓨터 태그가 많아 SF/네온풍으로 나옴.
+STYLE_PREFIX = "gamjeong style, illustration, flat color, soft colors, warm colors"
+
+# 이미지 프롬프트 LLM이 '정보처리기사' 같은 단어에서 지어내는 IT/SF 소품 태그 -> 화풍을 SF로 끌고 감, 제거.
+_OFF_STYLE_TAG = re.compile(
+    r"\b(computers?|keyboards?|laptops?|monitors?|screens?|typing|cyberpunk|sci-?fi|futuristic|hologram\w*|"
+    r"server|circuits?|robots?|digital|technology|negative emotions?)\b",
+    re.IGNORECASE,
 )
 
 # 간판/글자를 부르는 태그: neon 계열은 "간판"이 그려지며 글자가 깨짐 -> 분위기만 남기고 대체, 나머지 글자 계열은 제거.
@@ -204,6 +220,12 @@ def sanitize_image_tags(positive: str) -> tuple[str, list[str]]:
         if not tag:
             continue
         low = tag.lower()
+        if low == "gamjeong style":
+            changes.append("-gamjeong style(앞쪽 STYLE_PREFIX로 이동)")
+            continue
+        if _OFF_STYLE_TAG.search(low):
+            changes.append(f"-{tag}(SF/IT 소품)")
+            continue
         if low in _QUALITY_TAGS:
             changes.append(f"-{tag}(품질 태그 중복)")
             continue
@@ -337,7 +359,7 @@ def generate_diary_image(
         positive_body, negative = apply_gender(positive_body, negative, gender)
         positive_body_gender = positive_body
         positive_body, negative = ensure_male_group(positive_body, negative, gender)
-    positive = f"{QUALITY_PREFIX}, {positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
+    positive = f"{QUALITY_PREFIX}, {STYLE_PREFIX}, {positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
     print(f"  [태그 정리] {', '.join(tag_changes) if tag_changes else '변경 없음'}")
     print(
         f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "
