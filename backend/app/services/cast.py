@@ -39,8 +39,9 @@ _FEMALE_SOLO_TAGS = ["1girl", "solo"]
 _MALE_SOLO_NEGATIVE = "(1girl:1.3), (girl:1.2), (female:1.2), feminine, multiple girls, multiple boys, 2boys, 3boys, group"
 _FEMALE_SOLO_NEGATIVE = "multiple girls, multiple boys, 2girls, 3girls, group"
 # 그룹은 반대 성별만 막는다. (같은 성별의 다른 인원수 태그를 negative에 넣으면 positive와 충돌해서 그림이 뭉개짐 - F 실험)
-_MALE_GROUP_NEGATIVE = "girl, 1girl, 2girls, 3girls"
-_FEMALE_GROUP_NEGATIVE = "boy, 1boy, 2boys, 3boys"
+# 2026-10-27: 남성 3명 구도에 여자가 1명 섞여 나옴 -> 반대 성별 negative만 가중치로 강화 (같은 성별은 건드리지 않음)
+_MALE_GROUP_NEGATIVE = "(girl:1.3), (1girl:1.3), (2girls:1.2), (3girls:1.2), (female:1.2), feminine"
+_FEMALE_GROUP_NEGATIVE = "(boy:1.3), (1boy:1.3), (2boys:1.2), (3boys:1.2), (male:1.2)"
 
 
 def normalize_gender(gender) -> str | None:

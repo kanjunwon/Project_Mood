@@ -182,7 +182,9 @@ STYLE_PREFIX = "gamjeong style, illustration, flat color, soft colors, warm colo
 
 # 이미지 프롬프트 LLM이 '정보처리기사' 같은 단어에서 지어내는 IT/SF 소품 태그 -> 화풍을 SF로 끌고 감, 제거.
 _OFF_STYLE_TAG = re.compile(
-    r"\b(computers?|keyboards?|laptops?|monitors?|screens?|typing|cyberpunk|sci-?fi|futuristic|hologram\w*|"
+    r"\d{1,2}:\d{2}|\b\d{1,2}(st|nd|rd|th)\b|\b(january|february|march|april|may|june|july|august|september|october|november|december|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|nightlife|nightclubs?|clubs?|clubbing|"
+    r"dancing|dance floor|electronic music|dj|computers?|keyboards?|laptops?|monitors?|screens?|typing|cyberpunk|sci-?fi|futuristic|hologram\w*|"
     r"server|circuits?|robots?|digital|technology|negative emotions?)\b",
     re.IGNORECASE,
 )
@@ -326,9 +328,12 @@ def generate_diary_image(
     hair_color: str = "black",
     gender: str | None = None,
     timings: dict | None = None,
+    what: str = "",
+    why: str = "",
 ) -> str:
     """
     일기 텍스트 + 대표 감정 + Who/Where/When + 아바타 속성(안경/앞머리/머리길이/머리색) -> 그림일기 이미지 URL.
+    what/why: 사용자 답변 원문 (patch 12, hybrid 모드에서 장면 추출에 씀)
     glasses: "horn_rimmed" | "round" | "none"
     gender: 계정 성별("남성"/"여성"). template 모드는 프롬프트 생성에, 공통으로 apply_gender()가 1인 구도 성별 태그를 보정
     timings: dict를 넘기면 단계별 소요시간(초)을 채워줌 (측정용)
@@ -338,7 +343,8 @@ def generate_diary_image(
 
     t0 = time.time()
     prompt_result = translate_to_image_prompt(
-        diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when, gender=gender
+        diary_text=diary_text, who=who or [], emotion=top_emotion, where=where, when=when, gender=gender,
+        what=what, why=why,
     )
     # 글자/간판을 부르는 태그 정리 + negative는 LLM이 준 긴 문자열 대신 핵심만 쓰는 고정값 사용
     positive_body, tag_changes = sanitize_image_tags(prompt_result["positive"])
@@ -346,9 +352,15 @@ def generate_diary_image(
     positive_body_before = positive_body
     # 인원/성별은 앱 입력(Who)과 계정 성별로 서버가 확정한다 ("나"는 항상 포함). 판단 불가면 예전 보정 체인 사용.
     cast = build_cast(who, gender)
+    avatar = _avatar_tags(glasses, bangs, hair_length, hair_color)
+    avatar_front = False
     if cast is not None:
         rest = strip_person_tags(positive_body)
-        positive_body = ", ".join(cast.tags + ([rest] if rest else []))
+        # patch 12: 혼자 그림이면 아바타 태그(안경/앞머리/머리)를 인물 태그 바로 뒤로 (앞쪽 태그일수록 영향이 큼).
+        # 여러 명일 땐 모두에게 같은 머리/안경이 적용될 수 있어서 예전처럼 맨 끝에 둠.
+        avatar_front = cast.solo
+        head = cast.tags + ([avatar] if avatar_front else [])
+        positive_body = ", ".join(head + ([rest] if rest else []))
         if cast.negative:
             negative = f"{negative}, {cast.negative}"
         positive_body_gender = positive_body
@@ -359,7 +371,7 @@ def generate_diary_image(
         positive_body, negative = apply_gender(positive_body, negative, gender)
         positive_body_gender = positive_body
         positive_body, negative = ensure_male_group(positive_body, negative, gender)
-    positive = f"{QUALITY_PREFIX}, {STYLE_PREFIX}, {positive_body}, {_avatar_tags(glasses, bangs, hair_length, hair_color)}"
+    positive = f"{QUALITY_PREFIX}, {STYLE_PREFIX}, {positive_body}" + ("" if avatar_front else f", {avatar}")
     print(f"  [태그 정리] {', '.join(tag_changes) if tag_changes else '변경 없음'}")
     print(
         f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "

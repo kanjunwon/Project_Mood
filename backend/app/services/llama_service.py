@@ -3,6 +3,49 @@ import re
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
+
+# ---------- 생성 설정 (patch 12) ----------
+# 서버에서 코드 수정 없이 비교할 수 있게 .env로 뺌. 값은 호출할 때마다 다시 읽음.
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def get_generation_config() -> dict:
+    """
+    LLM_REPETITION_PENALTY (기본 1.05): 예전 1.2는 '프롬프트 전체'(예시 일기 포함 약 1,400토큰)에 감점이 걸려서
+        '~했다', '~더라' 같은 자연스러운 일기 표현까지 피하게 만들었음. 일기/이미지 변환 공통.
+    LLM_TOP_P (기본 0.9)
+    DIARY_NO_REPEAT_NGRAM (기본 4): 같은 4토큰 묶음 반복만 막음 (반복 방지는 이걸로 대신함)
+    DIARY_TEMPERATURES (기본 "0.6,0.75,0.9"): 시도별 온도. 예전처럼 내리면 재시도마다 같은 문장이 나와서 올림
+    DIARY_MIN_CHARS / DIARY_MAX_CHARS (기본 60 / 350): 예전 상한 200자 때문에 일기가 짧게만 통과했음
+    DIARY_BLOCK_WORDS (기본 true): 입력에 없는 식사시간대/술 종류/관계 단어를 생성 단계에서 금지
+    """
+    temps = []
+    for part in (os.environ.get("DIARY_TEMPERATURES", "") or "0.6,0.75,0.9").split(","):
+        try:
+            temps.append(float(part))
+        except ValueError:
+            pass
+    return {
+        "repetition_penalty": _env_float("LLM_REPETITION_PENALTY", 1.05),
+        "top_p": _env_float("LLM_TOP_P", 0.9),
+        "no_repeat_ngram_size": _env_int("DIARY_NO_REPEAT_NGRAM", 4),
+        "temperatures": temps or [0.6, 0.75, 0.9],
+        "min_chars": _env_int("DIARY_MIN_CHARS", 60),
+        "max_chars": _env_int("DIARY_MAX_CHARS", 350),
+        "block_words": os.environ.get("DIARY_BLOCK_WORDS", "true").strip().lower() not in ("0", "false", "no", "off"),
+    }
+
 SYSTEM_PREAMBLE = (
     "A chat between a curious user and an artificial intelligence assistant. "
     "The assistant는 20대 대학생 본인이다. 그날 있었던 일을 그냥 편하게 적어두는 개인 일기를 쓴다.\n\n"
@@ -149,6 +192,10 @@ def has_invented_word(text: str, context_str: str, keyword_list) -> str | None:
     return None
 
 
+def _split_sentences(text: str) -> list[str]:
+    return [s for s in re.split(r'(?<=[.!?])\s+', text.strip()) if s.strip()]
+
+
 def validate_diary(text: str, context_str: str = ""):
     text = text.strip()
     reasons = []
@@ -156,12 +203,13 @@ def validate_diary(text: str, context_str: str = ""):
     if not text:
         return False, ["empty"], 0
 
-    length_ok = 40 <= len(text) <= 200
+    cfg = get_generation_config()
+    length_ok = cfg["min_chars"] <= len(text) <= cfg["max_chars"]
     if not length_ok:
         reasons.append(f"길이={len(text)}자")
 
-    sentences = [s for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
-    count_ok = 2 <= len(sentences) <= 6
+    sentences = _split_sentences(text)
+    count_ok = 2 <= len(sentences) <= 8
     if not count_ok:
         reasons.append(f"문장수={len(sentences)}개")
 
@@ -237,28 +285,97 @@ for _old, _new in _FEWSHOT_MEALTIME_FIXES:
     assert FEWSHOT_EXAMPLES_NO_MEALTIME.count(_old) == 1, _old
     FEWSHOT_EXAMPLES_NO_MEALTIME = FEWSHOT_EXAMPLES_NO_MEALTIME.replace(_old, _new)
 
-# 2026-10 실기기 테스트: 기본(base) few-shot이 '저녁/아침/점심'을 쓰는 예시라 모델이 "오늘 아침 일찍…"으로 시작
-# -> 식사시간대 검증에서 3/3 불합격 -> 입력 그대로 이어붙인 안전 템플릿이 출력됨. 식사시간대 단어를 뺀 예시를 기본으로 채택.
-DEFAULT_VARIANT = "fewshot_no_mealtime"
+# "app_style" (patch 12 기본값): 실제 앱 입력처럼 짧은 답변을 자연스럽게 풀어 쓰는 예시 + 마무리 기분 한 마디.
+# - 예전 예시는 '이유'가 긴 문장이라, 실제 사용자가 "아쉽다"처럼 짧게 쓰면 답변을 거의 그대로 옮겨 적었음
+# - '언제'도 앱이 실제로 보내는 "10월 25일 토요일 오후 2시" 형식으로 맞춤
+# - 마무리에 평범한 기분 한 마디 -> KoBERT가 감정을 고를 단서가 생김 (emotion_word 변형과 같은 규칙)
+_RULE4 = ("4. 분량은 3~4문장, 100자 안팎으로 쓴다. 정보가 적어도 그날의 장소 분위기, 몸 상태, 사소한 "
+          "잡생각 같은 일반적인 배경으로 채워서 한 문장짜리로 끝내지 않는다.\n")
+assert SYSTEM_PREAMBLE_EMOTION_WORD.count(_RULE4) == 1
+SYSTEM_PREAMBLE_APP = SYSTEM_PREAMBLE_EMOTION_WORD.replace(
+    _RULE4,
+    "4. 분량은 4~5문장, 130~200자 정도로 쓴다. 답변이 짧아도(예: 이유가 '아쉽다' 한 마디) 그 장소에서 흔히 "
+    "보이는 모습, 그때의 몸 상태, 사소한 잡생각 같은 일반적인 내용으로 자연스럽게 풀어 쓴다. "
+    "답변 문장을 그대로 옮겨 적지 말고 내 말로 바꿔 쓴다.\n",
+)
+
+_APP_HUMAN = "Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라:\n\n"
+FEWSHOT_APP_STYLE = (
+    _APP_HUMAN +
+    "무엇을: 늦게까지 과제\n이유: 마감이 내일이라 급해서\n누구와: 혼자\n"
+    "언제: 10월 21일 화요일 오후 11시\n어디서: 자취방\n"
+    "Assistant:\n"
+    "마감이 내일이라 결국 자취방에서 늦게까지 과제를 붙잡고 있었다. 처음엔 금방 끝날 줄 알았는데 고칠 게 계속 보였다. "
+    "중간에 기지개 한 번 켜고 물 한 잔 마신 다음 다시 앉았다. 겨우 마무리하고 저장 버튼을 누르니까 몸에 힘이 쭉 빠졌다. "
+    "솔직히 좀 피곤했다.\n\n" +
+    _APP_HUMAN +
+    "무엇을: 정보처리기사 실기 시험\n이유: 아쉽다\n누구와: 혼자\n"
+    "언제: 10월 25일 토요일 오후 2시\n어디서: 시험장\n"
+    "Assistant:\n"
+    "오늘 정보처리기사 실기 시험을 보러 시험장에 다녀왔다. 나름대로 준비한다고 했는데 막상 자리에 앉으니까 생각보다 긴장이 됐다. "
+    "끝나고 나오는 길에 자꾸 문제들이 머릿속에서 맴돌았다. 결과는 나와 봐야 알겠지만 마음이 좀 아쉽다. "
+    "오늘은 일찍 쉬어야겠다.\n\n" +
+    _APP_HUMAN +
+    "무엇을: 친구랑 한강 산책\n이유: 날씨가 좋아서\n누구와: 친구\n"
+    "언제: 10월 18일 토요일 오후 4시\n어디서: 한강공원\n"
+    "Assistant:\n"
+    "날씨가 좋아서 친구랑 한강에 나갔다. 바람이 선선해서 걷기 딱 좋았다. 강을 따라 한참 걷다가 벤치에 앉아서 "
+    "이런저런 얘기를 나눴다. 해가 질 무렵 하늘 색이 예뻐서 둘이서 사진도 몇 장 찍었다. 오랜만에 기분이 상쾌했다.\n\n" +
+    _APP_HUMAN +
+    "무엇을: 엄마랑 장보기\n이유: 오랜만에 같이 시간을 보내서 좋았다\n누구와: 엄마\n"
+    "언제: 10월 12일 일요일 오전 11시\n어디서: 동네 마트\n"
+    "Assistant:\n"
+    "오랜만에 엄마랑 동네 마트에 장을 보러 갔다. 엄마는 카트를 밀면서 이것저것 꼼꼼하게 고르셨다. "
+    "나는 옆에서 따라다니다가 먹고 싶은 과자를 슬쩍 카트에 넣었다. 별거 아닌데 둘이 같이 돌아다니는 시간이 괜히 좋았다. "
+    "마음이 편안했다.\n\n" +
+    _APP_HUMAN +
+    "무엇을: 친구 생일 축하\n이유: 친한 친구 생일이라 챙겨주고 싶어서\n누구와: 친구\n"
+    "언제: 10월 3일 금요일 오후 7시\n어디서: 친구네 집\n"
+    "Assistant:\n"
+    "친한 친구 생일이라 케이크를 하나 사 들고 걔네 집에 갔다. 초에 불을 붙이고 노래를 불러 줬더니 친구가 쑥스러워하면서 웃었다. "
+    "이런저런 얘기를 하다 보니 시간이 금방 갔다. 집에 돌아오는 길에 챙겨 주길 잘했다는 생각이 들었다. 기분이 좋았다.\n"
+)
 
 PROMPT_VARIANTS = {
     "base": (SYSTEM_PREAMBLE, FEWSHOT_EXAMPLES),
     "emotion_word": (SYSTEM_PREAMBLE_EMOTION_WORD, FEWSHOT_EXAMPLES),
     "fewshot_no_mealtime": (SYSTEM_PREAMBLE, FEWSHOT_EXAMPLES_NO_MEALTIME),
+    "app_style": (SYSTEM_PREAMBLE_APP, FEWSHOT_APP_STYLE),
 }
+
+# 마지막 지시문 (변형별). app_style은 분량/풀어쓰기 지시가 다름.
+_FINAL_INSTRUCTION = (
+    "(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것. "
+    "아침/점심/저녁/새벽 같은 시간대 단어도 쓰지 말 것. '술'은 입력에 적힌 그대로 '술'이라고만 쓰고 "
+    "맥주/소주 같은 구체적인 종류는 쓰지 말 것. 입력의 '무엇을'과 '이유'를 반드시 반영할 것. 3~4문장으로 쓸 것)"
+)
+_FINAL_INSTRUCTION_APP = (
+    "(정보에 없는 음식/음료/대화내용/결과 판단은 지어내지 말 것. 아침/점심/저녁/새벽 같은 시간대 단어는 쓰지 말 것. "
+    "'술'은 입력에 적힌 그대로 '술'이라고만 쓸 것. '무엇을'과 '이유'를 내 말로 풀어서 4~5문장으로 쓰고, "
+    "마지막에 그날 기분을 평범한 말 하나로 적을 것)"
+)
+
+# 2026-10 실기기 테스트: 기본(base) few-shot이 '저녁/아침/점심'을 쓰는 예시라 모델이 "오늘 아침 일찍…"으로 시작
+# -> 식사시간대 검증에서 3/3 불합격 -> 입력 그대로 이어붙인 안전 템플릿이 출력됨 (patch 10에서 fewshot_no_mealtime 채택).
+# patch 12: 짧은 답변을 풀어 쓰는 app_style을 기본으로. .env DIARY_PROMPT_VARIANT로 예전 변형으로 되돌릴 수 있음.
+DEFAULT_VARIANT = "app_style"
+
+
+def default_variant() -> str:
+    v = (os.environ.get("DIARY_PROMPT_VARIANT", "") or DEFAULT_VARIANT).strip()
+    return v if v in PROMPT_VARIANTS else DEFAULT_VARIANT
 
 
 def build_prompt(actual_user_content: str, variant: str | None = None) -> str:
-    variant = variant or DEFAULT_VARIANT
+    variant = variant or default_variant()
     if variant not in PROMPT_VARIANTS:
         raise ValueError(f"알 수 없는 프롬프트 변형: {variant} (가능: {', '.join(PROMPT_VARIANTS)})")
     preamble, fewshot = PROMPT_VARIANTS[variant]
+    instruction = _FINAL_INSTRUCTION_APP if variant == "app_style" else _FINAL_INSTRUCTION
     return (
         f"{preamble}\n"
         f"{fewshot}\n"
-        f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 "
-        f"(정보에 없는 음식/음료/시간/대화내용/결과 판단은 절대 지어내지 말 것. "
-        f"아침/점심/저녁 같은 식사 시간대 단어도 쓰지 말 것. 3~4문장으로 쓸 것):\n\n"
+        f"Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라 {instruction}:\n\n"
         f"{actual_user_content}\n"
         f"Assistant:\n"
     )
@@ -271,11 +388,14 @@ def _generate_once(
     do_sample: bool = True,
     extra_stop_strings: list | None = None,
     stats: dict | None = None,
+    no_repeat_ngram_size: int = 0,
+    bad_words: list | None = None,
 ) -> str:
     """
     do_sample/extra_stop_strings/stats는 이미지 프롬프트 변환 측정용으로 추가한 옵션.
-    기본값이면 예전과 완전히 같은 호출임 (일기 생성 쪽은 안 건드림).
     stats에 dict를 넘기면 입력/생성 토큰 수, 소요시간, 잘리기 전 raw 출력을 채워줌.
+    no_repeat_ngram_size / bad_words는 일기 생성에서만 넘김 (patch 12).
+    repetition_penalty / top_p는 get_generation_config() 값 (일기·이미지 변환 공통).
     """
     import time
     import torch
@@ -284,11 +404,14 @@ def _generate_once(
     model, tokenizer = get_model_and_tokenizer()
     input_ids = tokenizer(prompt_str, return_tensors="pt")["input_ids"].to(model.device)
 
+    cfg = get_generation_config()
     gen_kwargs = dict(
         input_ids=input_ids,
         max_new_tokens=max_new_tokens,
         do_sample=do_sample,
-        repetition_penalty=1.2,
+        # transformers의 반복 감점은 새로 쓴 글자뿐 아니라 '프롬프트 전체'에 걸림.
+        # 1.2면 예시 일기에 나온 자연스러운 표현까지 감점돼서 어색해졌음 -> 아주 약하게(1.05)
+        repetition_penalty=cfg["repetition_penalty"],
         # EEVE의 config.json에 "use_cache": false 가 들어있어서, 명시하지 않으면 KV 캐시가 꺼진 채로
         # 토큰마다 입력 전체를 다시 계산함 (1.8 tok/s -> 켜면 약 18 tok/s). 반드시 True로 고정.
         use_cache=True,
@@ -298,7 +421,12 @@ def _generate_once(
     )
     if do_sample:
         gen_kwargs["temperature"] = temperature
-        gen_kwargs["top_p"] = 0.85  # 0.9 -> 0.85로 낮춰서 극단적으로 튀는 단어 선택 확률 축소
+        gen_kwargs["top_p"] = cfg["top_p"]
+    if no_repeat_ngram_size:
+        gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size  # 같은 n토큰 묶음이 두 번 나오지 않게
+    bad_ids = _bad_words_ids(tokenizer, bad_words or [])
+    if bad_ids:
+        gen_kwargs["bad_words_ids"] = bad_ids  # 이 토큰 열은 아예 생성하지 못함
 
     start = time.time()
     with torch.no_grad():
@@ -320,6 +448,50 @@ def _generate_once(
     return generated_text.split("Human:")[0].strip()
 
 
+def _bad_words_ids(tokenizer, words: list) -> list:
+    """
+    금지할 단어 -> 토큰 id 열 목록 (generate의 bad_words_ids 형식).
+    같은 단어도 앞에 공백이 있을 때/없을 때 토큰이 달라서 둘 다 넣음.
+    SentencePiece 계열은 공백이 '▁' 토큰으로 따로 붙는 경우가 있어서, 공백만 있는 맨 앞 토큰을 뗀 것도 넣음.
+    """
+    out = set()
+    for w in words:
+        for variant in (w, " " + w):
+            ids = tokenizer(variant, add_special_tokens=False)["input_ids"]
+            if not ids:
+                continue
+            out.add(tuple(ids))
+            if len(ids) > 1 and not tokenizer.decode(ids[:1]).strip():
+                out.add(tuple(ids[1:]))
+    return [list(t) for t in out]
+
+
+# 생성 단계에서 막을 단어 (검증기에서 걸리는 단어 중, 다른 단어 속에 잘 섞이지 않는 2글자 이상만)
+# '술', '형'처럼 한 글자는 '미술', '인형' 같은 정상 단어까지 막을 수 있어서 제외 (검증기가 계속 잡음)
+_BLOCK_CANDIDATES = (
+    tuple(MEALTIME_KEYWORDS)
+    + ("소주", "맥주", "막걸리", "와인", "폭탄주")
+    + tuple(k for k in RELATION_KEYWORDS if len(k) >= 2)
+)
+
+
+def words_to_block(context_str: str) -> list[str]:
+    """입력(context)에 없는 금지 후보만 골라서 반환 (입력에 '선배'가 있으면 '선배'는 써도 됨)"""
+    return [w for w in _BLOCK_CANDIDATES if w not in context_str]
+
+
+def _drop_invented_sentences(text: str, context_str: str) -> str:
+    """입력에 없는 식사시간대/술/관계 단어가 들어간 문장만 빼고 나머지를 이어 붙임"""
+    keep = []
+    for sent in _split_sentences(text):
+        if (has_invented_word(sent, context_str, MEALTIME_KEYWORDS)
+                or has_invented_word(sent, context_str, ALCOHOL_KEYWORDS)
+                or has_invented_word(sent, context_str, RELATION_KEYWORDS)):
+            continue
+        keep.append(sent.strip())
+    return " ".join(keep)
+
+
 def _mock_generate(what: str) -> str:
     return f"오늘은 {what} 관련된 하루였다. 이건 목(mock) 응답이라 실제 생성된 건 아니다. 그래도 API 흐름 테스트용으로는 충분하다."
 
@@ -334,6 +506,8 @@ def _repair_meal_words(text: str, context_str: str) -> str:
     for kw in MEALTIME_KEYWORDS:
         if kw in context_str or kw not in out:
             continue
+        # "새벽까지 있었다" -> "늦게까지 있었다" (먼저 처리 안 하면 "오늘 까지"로 깨짐)
+        out = re.sub(rf"(?:오늘\s*)?{kw}(?:\s*(?:일찍|늦게))?\s*까지", "늦게까지", out)
         out = re.sub(rf"(?:오늘\s*)?{kw}(?:\s*(?:일찍|늦게))?(?:에는|에도|에|엔|부터|은|는)?\s*", "오늘 ", out)
     out = re.sub(r"(?:오늘\s*){2,}", "오늘 ", out)
     return out.strip()
@@ -366,12 +540,16 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
     validate_sec = 0.0
     attempts = 0
     attempt_details = []  # 시도별 측정값 (불합격 사유 집계/지어내기 집계용)
+    cfg = get_generation_config()
+    block = words_to_block(context_str) if cfg["block_words"] else []
     for attempt in range(1, MAX_RETRIES + 1):
         attempts = attempt
-        temp = max(0.15, 0.45 - (attempt - 1) * 0.15)
+        # 재시도할수록 온도를 올림 (예전처럼 내리면 세 번 다 거의 같은 문장이 나왔음)
+        temp = cfg["temperatures"][min(attempt - 1, len(cfg["temperatures"]) - 1)]
         stats = {}
         t0 = time.time()
-        candidate = _generate_once(prompt_str, temperature=temp, stats=stats)
+        candidate = _generate_once(prompt_str, temperature=temp, stats=stats,
+                                   no_repeat_ngram_size=cfg["no_repeat_ngram_size"], bad_words=block)
         t1 = time.time()
         is_ok, reasons, score = validate_diary(candidate, context_str=context_str)
         t2 = time.time()
@@ -402,11 +580,15 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
     repaired = False
     if not passed:
         # 후보를 점수 높은 순으로 고쳐보고, 재검증을 통과하는 첫 후보를 쓴다 (입력 복붙 템플릿보다 훨씬 자연스러움)
+        # 1) 식사시간대 단어를 고쳐보고 2) 그래도 안 되면 문제 문장만 빼 봄 (둘 다 재검증 통과해야 채택)
         for d in sorted(attempt_details, key=lambda d: d["score"], reverse=True):
-            fixed = _repair_meal_words(d["text"], context_str)
-            if fixed and fixed != d["text"].strip() and validate_diary(fixed, context_str=context_str)[0]:
-                clean_diary, passed, repaired = fixed, True, True
-                print(f"  식사시간대 단어를 고쳐서 채택: {fixed[:60]}...")
+            for how, fixed in (("식사시간대 단어 수정", _repair_meal_words(d["text"], context_str)),
+                               ("문제 문장 제거", _drop_invented_sentences(d["text"], context_str))):
+                if fixed and fixed != d["text"].strip() and validate_diary(fixed, context_str=context_str)[0]:
+                    clean_diary, passed, repaired = fixed, True, True
+                    print(f"  {how} 후 채택: {fixed[:60]}...")
+                    break
+            if passed:
                 break
 
     if not passed:
@@ -419,7 +601,8 @@ def generate_diary_text(what: str, why: str, who, when: str, where: str, timings
         timings["diary_validate_sec"] = round(validate_sec, 4)
         timings["diary_attempt_details"] = attempt_details
         timings["diary_fallback"] = not passed
-        timings["prompt_variant"] = prompt_variant or DEFAULT_VARIANT
+        timings["prompt_variant"] = prompt_variant or default_variant()
+        timings["diary_blocked_words"] = block
         timings["diary_repaired"] = repaired
 
     return clean_diary, not passed

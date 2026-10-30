@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.dependencies import get_current_user_id
 from app.schemas.diary import DiaryRequest, DiaryResponse, DiaryJobCreated, DiaryJobStatus
 from app.services.llama_service import generate_diary_text
-from app.services.kobert_service import analyze_emotion
+from app.services.kobert_service import analyze_emotion_with_reason
 from app.repositories.diary_repository import (
     save_diary, get_diary_by_user, get_diaries_on_date, delete_diary, delete_diaries_by_ids,
 )
@@ -161,7 +161,8 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
 
     t = time.time()
     try:
-        emotion_result = analyze_emotion(diary_text)
+        # patch 12: 일기 + 사용자의 '이유' 답변을 같이 봄 (.env KOBERT_WHY_WEIGHT, 0이면 예전과 같음)
+        emotion_result = analyze_emotion_with_reason(diary_text, request.why)
     except Exception as e:
         print(f"감정 분석 실패: {e}")
         emotion_result = {"top_emotion": None, "scores": None, "sentiment_score": None}
@@ -191,6 +192,8 @@ def _run_pipeline(request: DiaryRequest, user_id: int, entry_date: Optional[date
             from app.services.sd3_service import generate_diary_image
             image_url = generate_diary_image(
                 diary_text=diary_text,
+                what=request.what,
+                why=request.why,
                 top_emotion=emotion_result.get("top_emotion") or "편안한",
                 who=request.who,
                 where=request.where,

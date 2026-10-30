@@ -53,3 +53,29 @@ def analyze_emotion(text: str) -> dict:
         "scores": scores,
         "sentiment_score": sentiment_score,
     }
+
+def analyze_emotion_with_reason(diary_text: str, why: str = "", why_weight: float | None = None) -> dict:
+    """
+    patch 12: 생성된 일기 + 사용자가 직접 쓴 '이유' 답변을 같이 보고 감정을 정한다.
+    일기는 LLM이 쓴 글이라 감정 단서가 흐리거나(담백하게 쓰라는 규칙) 틀릴 수 있음.
+    '이유'("아쉽다", "재미있게 잘 놀아서")는 사용자 본인의 말이라 감정 신호가 가장 직접적임.
+    점수 = (1 - w) x 일기 점수 + w x 이유 점수. w는 .env KOBERT_WHY_WEIGHT (기본 0.4, 0이면 예전과 같음)
+    리턴 형태는 analyze_emotion과 같음 (통계 파이프라인이 의존).
+    """
+    if why_weight is None:
+        try:
+            why_weight = float(os.environ.get("KOBERT_WHY_WEIGHT", "").strip() or 0.4)
+        except ValueError:
+            why_weight = 0.4
+    why_weight = min(max(why_weight, 0.0), 1.0)
+    base = analyze_emotion(diary_text)
+    if not (why or "").strip() or why_weight <= 0 or not base.get("scores"):
+        return base
+    reason = analyze_emotion(why)
+    keys = set(base["scores"]) | set(reason.get("scores") or {})
+    scores = {k: (1 - why_weight) * base["scores"].get(k, 0.0) + why_weight * (reason.get("scores") or {}).get(k, 0.0)
+              for k in keys}
+    top_emotion = max(scores, key=scores.get)
+    positive_sum = sum(v for k, v in scores.items() if get_valence(k) == "긍정감정")
+    negative_sum = sum(v for k, v in scores.items() if get_valence(k) == "부정감정")
+    return {"top_emotion": top_emotion, "scores": scores, "sentiment_score": round(positive_sum - negative_sum, 3)}

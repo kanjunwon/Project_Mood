@@ -38,19 +38,32 @@ COMFYUI_URL=
 - `JWT_SECRET`: 로그인 토큰 서명용 랜덤 문자열
 - `COMFYUI_URL`: ComfyUI 서버 주소 (예: `http://127.0.0.1:8188`, FastAPI랑 ComfyUI가 같은 머신이면 localhost로 충분)
 
-**이미지 프롬프트 변환 설정 (선택, 안 넣으면 기존 동작 그대로)** — 상세는 `app/services/image_prompt_service.py` 맨 위 주석
+**이미지 프롬프트 변환 설정 (선택, 안 넣으면 아래 기본값)** — 상세는 `app/services/image_prompt_service.py` 맨 위 주석
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `IMAGE_PROMPT_MODE` | `llm` | `template`이면 LLM 호출 없이 사전 매핑 (`image_prompt_template.py`, 반영/누락 정보는 파일 주석 참고) |
+| `IMAGE_PROMPT_MODE` | `hybrid` | `hybrid`: 인물·표정·조명은 사전 매핑, LLM은 답변(무엇을/이유/어디서)에서 장소·행동·소품만 영어 태그로 뽑음 (patch 12). `llm`: 예전처럼 LLM이 프롬프트 전체 작성. `template`: LLM 없이 사전 매핑만 (`image_prompt_template.py`) |
 | `IMAGE_PROMPT_MAX_NEW_TOKENS` | `200` | |
 | `IMAGE_PROMPT_DO_SAMPLE` | `true` | `false`면 greedy |
 | `IMAGE_PROMPT_TEMPERATURE` | `0.3` | |
 | `IMAGE_PROMPT_NUM_EXAMPLES` | `5` | 시스템 프롬프트 예시 개수 (1~5) |
 | `IMAGE_PROMPT_STOP_ON_JSON_CLOSE` | `false` | JSON이 닫히면 생성 중단 |
-| `IMAGE_PROMPT_FIXED_NEGATIVE` | `false` | LLM은 positive만 생성, negative는 고정값 |
+| `IMAGE_PROMPT_FIXED_NEGATIVE` | `true` | (llm 모드) LLM은 positive만 생성, negative는 고정값. 예전처럼 하려면 `false` |
 | `IMAGE_PROMPT_MAX_ATTEMPTS` | `2` | JSON 파싱 실패 시 총 시도 횟수 |
 | `ENABLE_DEBUG_ENDPOINTS` | `false` | 측정할 때만 `true` (`/debug/*` 등록) |
+
+**일기 생성 / 감정 분석 설정 (선택, patch 12)** — 상세는 `app/services/llama_service.py`, `kobert_service.py` 주석
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `DIARY_PROMPT_VARIANT` | `app_style` | 일기 프롬프트 변형. `app_style`: 앱 실제 입력 형태(짧은 답변, "10월 25일 토요일 오후 2시")에 맞춘 예시 + 4~5문장. 예전으로 되돌리려면 `fewshot_no_mealtime` |
+| `LLM_REPETITION_PENALTY` | `1.05` | 예전 값 1.2는 few-shot 예시 단어까지 벌점을 줘서 "좋았다/뿌듯했다" 같은 자연스러운 끝맺음을 피하게 만들었음 |
+| `LLM_TOP_P` | `0.9` | |
+| `DIARY_NO_REPEAT_NGRAM` | `4` | 같은 4토큰 묶음 반복 금지 (penalty를 낮춘 대신 문장 반복 방지). `0`이면 끔 |
+| `DIARY_TEMPERATURES` | `0.6,0.75,0.9` | 시도별 temperature (검증 실패 시 다음 값으로 재시도) |
+| `DIARY_MIN_CHARS` / `DIARY_MAX_CHARS` | `60` / `350` | 검증기 길이 범위 (문장 수는 2~8) |
+| `DIARY_BLOCK_WORDS` | `true` | 입력에 없는 식사시간대(아침/점심/저녁…)·술 종류·관계 단어를 생성 단계에서 막음 |
+| `KOBERT_WHY_WEIGHT` | `0.4` | 감정 = (1-w)·일기 + w·'이유' 답변. `0`이면 예전처럼 일기만 봄 |
 
 `.env` 파일은 PowerShell heredoc(`@'...'@ | Out-File -Encoding utf8`)이나 `cat > file << 'EOF'` 방식으로 만들 때, 종료 마커가 제대로 안 닫히면 스크립트 줄이 그대로 섞여 들어가는 경우가 있었음 — 만든 후 `cat .env`로 내용 한 번 확인하는 습관 추천.
 

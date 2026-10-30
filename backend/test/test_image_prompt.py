@@ -31,7 +31,8 @@ def fake_llm(monkeypatch):
     calls = []
     outputs = []
 
-    def fake(prompt_str, temperature, max_new_tokens=220, do_sample=True, extra_stop_strings=None, stats=None):
+    def fake(prompt_str, temperature, max_new_tokens=220, do_sample=True, extra_stop_strings=None, stats=None,
+             **kwargs):
         calls.append({"prompt": prompt_str, "temperature": temperature, "max_new_tokens": max_new_tokens,
                       "do_sample": do_sample, "extra_stop_strings": extra_stop_strings})
         if stats is not None:
@@ -46,19 +47,27 @@ def fake_llm(monkeypatch):
 VALID_JSON = '{"positive": "1girl, solo, cafe, gamjeong style", "negative": "bad anatomy"}'
 
 
+@pytest.fixture
+def legacy_llm(monkeypatch):
+    """patch 12 전 기본값(llm 모드, negative도 LLM이 출력)으로 되돌림 - 예전 llm 경로 테스트용"""
+    monkeypatch.setenv("IMAGE_PROMPT_MODE", "llm")
+    monkeypatch.setenv("IMAGE_PROMPT_FIXED_NEGATIVE", "false")
+
+
 def test_default_system_prompt_is_identical_to_original():
     assert hashlib.sha256(ips.SYSTEM_PROMPT.encode("utf-8")).hexdigest() == ORIGINAL_SYSTEM_PROMPT_SHA256
     assert ips.build_system_prompt() == ips.SYSTEM_PROMPT
 
 
-def test_default_config_matches_previous_hardcoded_values():
+def test_default_config_patch12():
+    # patch 12: 기본 hybrid 모드 + negative 고정 (나머지는 예전 값 그대로)
     assert ips.get_config() == {
-        "mode": "llm", "max_new_tokens": 200, "do_sample": True, "temperature": 0.3,
-        "num_examples": 5, "stop_on_json_close": False, "fixed_negative": False, "max_attempts": 2,
+        "mode": "hybrid", "max_new_tokens": 200, "do_sample": True, "temperature": 0.3,
+        "num_examples": 5, "stop_on_json_close": False, "fixed_negative": True, "max_attempts": 2,
     }
 
 
-def test_default_llm_call_uses_previous_arguments(fake_llm):
+def test_default_llm_call_uses_previous_arguments(fake_llm, legacy_llm):
     calls, outputs = fake_llm
     outputs.append(VALID_JSON)
     result = ips.translate_to_image_prompt("일기", ["혼자"], "편안한", "카페", "오후 2시")
@@ -71,7 +80,7 @@ def test_default_llm_call_uses_previous_arguments(fake_llm):
     assert ips.SYSTEM_PROMPT in calls[0]["prompt"]
 
 
-def test_retry_once_then_success(fake_llm):
+def test_retry_once_then_success(fake_llm, legacy_llm):
     calls, outputs = fake_llm
     outputs.extend(["깨진 출력 {", VALID_JSON])
     report = {}
@@ -82,7 +91,7 @@ def test_retry_once_then_success(fake_llm):
     assert report["fallback_used"] is False
 
 
-def test_two_failures_fall_back(fake_llm):
+def test_two_failures_fall_back(fake_llm, legacy_llm):
     calls, outputs = fake_llm
     outputs.extend(["no json", '{"positive": "x"'])
     result = ips.translate_to_image_prompt("일기", "혼자", "슬픈", "", "")
@@ -90,7 +99,7 @@ def test_two_failures_fall_back(fake_llm):
     assert result == ips._fallback_prompt("슬픈")
 
 
-def test_mock_mode_llm_returns_fallback_without_calling_llm(monkeypatch):
+def test_mock_mode_llm_returns_fallback_without_calling_llm(monkeypatch, legacy_llm):
     monkeypatch.setattr(llama_service, "MOCK_MODE", True)
     monkeypatch.setattr(llama_service, "_generate_once", lambda *a, **k: pytest.fail("LLM 호출되면 안 됨"))
     assert ips.translate_to_image_prompt("일기", "혼자", "기쁜", "", "") == ips._fallback_prompt("기쁜")
@@ -98,7 +107,7 @@ def test_mock_mode_llm_returns_fallback_without_calling_llm(monkeypatch):
 
 # ---------- 환경변수 설정 ----------
 
-def test_env_overrides(monkeypatch, fake_llm):
+def test_env_overrides(monkeypatch, fake_llm, legacy_llm):
     calls, outputs = fake_llm
     monkeypatch.setenv("IMAGE_PROMPT_MAX_NEW_TOKENS", "120")
     monkeypatch.setenv("IMAGE_PROMPT_DO_SAMPLE", "false")
@@ -136,7 +145,7 @@ def test_example_reduction_keeps_priority_order():
     assert "롤러코스터" in three
 
 
-def test_fixed_negative_prompt_and_parse(fake_llm):
+def test_fixed_negative_prompt_and_parse(fake_llm, legacy_llm):
     prompt = ips.build_system_prompt(5, fixed_negative=True)
     assert '"negative"' not in prompt
     calls, outputs = fake_llm
@@ -145,7 +154,7 @@ def test_fixed_negative_prompt_and_parse(fake_llm):
     assert result == {"positive": "1girl, solo, gamjeong style", "negative": ips.FALLBACK_NEGATIVE}
 
 
-def test_fixed_negative_equals_system_prompt_negative_exactly(fake_llm):
+def test_fixed_negative_equals_system_prompt_negative_exactly(fake_llm, legacy_llm):
     # SYSTEM_PROMPT가 원본(커밋 95bdc05)과 같다는 건 해시 테스트가 보장하므로,
     # 여기서는 그 프롬프트 "텍스트"에서 negative를 직접 뽑아 fixed_negative 경로의 실제 반환값과 비교함
     import re
@@ -325,3 +334,51 @@ def test_debug_endpoint_template_and_mock_never_load_model(monkeypatch):
     r = client.post("/debug/image-prompt", json={**body, "overrides": {"nope": 1}}, headers=headers)
     assert r.status_code == 400
     assert client.post("/debug/image-prompt", json=body).status_code in (401, 403)
+
+
+# ---------- hybrid 모드 (patch 12) ----------
+
+def test_scene_tag_cleaning():
+    assert ips.clean_scene_tag("Coffee_Cup") == "coffee cup"
+    assert ips.clean_scene_tag("cafe") == "cafe"
+    for bad in ("October 16th", "10:13 PM", "information processing technician test",
+                "negative emotions", "gamjeong style", "1girl", "", None, 3, "카페"):
+        assert ips.clean_scene_tag(bad) is None, bad
+
+
+def test_parse_scene_filters_and_limits():
+    raw = '잡담 {"place": "Exam Hall", "action": "taking exam", "objects": ["desk", "October 16th", "pencil", "eraser", "ruler"]} 끝'
+    assert ips.parse_scene(raw) == ["exam hall", "taking exam", "desk", "pencil"]  # objects는 앞 3개 중 통과한 것만
+    assert ips.parse_scene("no json") is None
+    assert ips.parse_scene('{"place": "Yonsinnae 10th street"}') is None
+
+
+def test_hybrid_merges_template_and_scene(fake_llm):
+    calls, outputs = fake_llm
+    outputs.append('{"place": "cafe", "action": "studying", "objects": ["notebook", "coffee cup"]}')
+    report = {}
+    r = ips.translate_to_image_prompt("오늘은 카페에서 공부를 했다.", "혼자", "뿌듯한", "동네 카페",
+                                      "10월 25일 토요일 오후 2시", what="카페에서 공부", why="집중이 잘 돼서",
+                                      report=report)
+    pos = r["positive"]
+    assert pos.startswith("1girl, solo") and pos.endswith("gamjeong style")
+    assert "proud smile" in pos and "daytime" in pos           # template: 감정/시간
+    assert "notebook" in pos and "studying" in pos              # LLM 장면
+    assert len(pos.split(", ")) == len(set(pos.split(", ")))    # 중복 없음
+    assert len(calls) == 1 and calls[0]["do_sample"] is False and calls[0]["max_new_tokens"] == ips.SCENE_MAX_NEW_TOKENS
+    assert '무엇을="카페에서 공부"' in calls[0]["prompt"] and "오늘은 카페에서" not in calls[0]["prompt"]  # 일기 본문은 안 넣음
+    assert report["scene"] == ["cafe", "studying", "notebook", "coffee cup"] and report["fallback_used"] is False
+
+
+def test_hybrid_falls_back_to_template_when_scene_fails(fake_llm):
+    calls, outputs = fake_llm
+    outputs.append("죄송합니다")
+    r = ips.translate_to_image_prompt("카페에서 공부했다", "혼자", "뿌듯한", "카페", "오후 2시", what="공부")
+    assert r == build_template_prompt("공부  카페에서 공부했다", "혼자", "뿌듯한", "카페", "오후 2시")
+
+
+def test_hybrid_mock_mode_never_calls_llm(monkeypatch):
+    monkeypatch.setattr(llama_service, "MOCK_MODE", True)
+    monkeypatch.setattr(llama_service, "_generate_once", lambda *a, **k: pytest.fail("LLM 호출되면 안 됨"))
+    r = ips.translate_to_image_prompt("카페에서 공부했다", "혼자", "뿌듯한", "카페", "오후 2시", what="공부")
+    assert r["positive"].startswith("1girl, solo")

@@ -15,8 +15,10 @@ def fake_llm(monkeypatch):
     outputs = []
     calls = []
 
-    def fake(prompt_str, temperature, max_new_tokens=220, do_sample=True, extra_stop_strings=None, stats=None):
-        calls.append({"prompt": prompt_str, "temperature": temperature})
+    def fake(prompt_str, temperature, max_new_tokens=220, do_sample=True, extra_stop_strings=None, stats=None,
+             no_repeat_ngram_size=0, bad_words=None):
+        calls.append({"prompt": prompt_str, "temperature": temperature,
+                      "no_repeat_ngram_size": no_repeat_ngram_size, "bad_words": bad_words})
         if stats is not None:
             stats.update(input_tokens=1500, output_tokens=120, tokens_per_sec=18.0, hit_max_new_tokens=False)
         return outputs.pop(0)
@@ -42,7 +44,9 @@ def test_attempt_details_recorded_with_reasons(fake_llm):
     assert details[0]["output_tokens"] == 120 and details[0]["tokens_per_sec"] == 18.0
     assert details[0]["text"] == WITH_ALCOHOL
     assert timings["diary_attempts"] == 2 and timings["diary_fallback"] is False
-    assert [c["temperature"] for c in calls] == pytest.approx([0.45, 0.3])  # 기존 온도 스케줄 그대로
+    assert [c["temperature"] for c in calls] == pytest.approx([0.6, 0.75])  # patch 12: 재시도마다 온도를 올림
+    assert calls[0]["no_repeat_ngram_size"] == 4
+    assert "맥주" in calls[0]["bad_words"] and "아침" in calls[0]["bad_words"]
 
 
 def test_fallback_after_three_failures_is_recorded(fake_llm):
@@ -71,9 +75,9 @@ CONTENT = "무엇을: X\n이유: Y\n누구와: 혼자\n언제: 오후 2시\n어�
 
 def test_default_prompt_unchanged_from_main():
     assert hashlib.sha256((ls.SYSTEM_PREAMBLE + ls.FEWSHOT_EXAMPLES).encode()).hexdigest() == MAIN_PROMPT_SHA256
-    # patch 10: 기본 변형을 식사시간대 단어 없는 few-shot으로 교체 (base 변형은 측정용으로 그대로 남김)
-    assert ls.build_prompt(CONTENT) == ls.build_prompt(CONTENT, "fewshot_no_mealtime")
-    assert ls.build_prompt(CONTENT).startswith(ls.SYSTEM_PREAMBLE + "\n" + ls.FEWSHOT_EXAMPLES_NO_MEALTIME)
+    # patch 12: 기본 변형은 app_style (base/fewshot_no_mealtime은 측정·되돌리기용으로 그대로 남김)
+    assert ls.build_prompt(CONTENT) == ls.build_prompt(CONTENT, "app_style")
+    assert ls.build_prompt(CONTENT).startswith(ls.SYSTEM_PREAMBLE_APP + "\n" + ls.FEWSHOT_APP_STYLE)
 
 
 def test_emotion_word_variant_changes_only_rule2_tail():
@@ -131,3 +135,71 @@ def test_fewshot_no_mealtime_variant_passes_validator_and_has_no_mealtime_words(
             assert word not in diary and word not in f["언제"]
     # 시스템 프롬프트는 그대로, 예시만 바뀜
     assert ls.PROMPT_VARIANTS["fewshot_no_mealtime"][0] == ls.SYSTEM_PREAMBLE
+
+
+
+# ---------- patch 12 ----------
+
+def test_env_can_switch_default_variant(monkeypatch):
+    monkeypatch.setenv("DIARY_PROMPT_VARIANT", "fewshot_no_mealtime")
+    assert ls.build_prompt(CONTENT) == ls.build_prompt(CONTENT, "fewshot_no_mealtime")
+    monkeypatch.setenv("DIARY_PROMPT_VARIANT", "없는변형")
+    assert ls.build_prompt(CONTENT) == ls.build_prompt(CONTENT, "app_style")
+
+
+def test_old_variants_prompt_text_unchanged():
+    # 예전 변형의 마지막 지시문이 patch 12 전과 같은지 (되돌렸을 때 예전과 같은 동작)
+    p = ls.build_prompt(CONTENT, "fewshot_no_mealtime")
+    assert "입력의 '무엇을'과 '이유'를 반드시 반영할 것. 3~4문장으로 쓸 것):\n\n" + CONTENT in p
+
+
+def test_app_style_examples_pass_own_validator_and_have_no_mealtime_words():
+    for block in ls.FEWSHOT_APP_STYLE.split("Human: ")[1:]:
+        inp, out = block.split("Assistant:\n")
+        fields = [line.split(": ", 1)[1] for line in inp.strip().splitlines()[1:] if ": " in line]
+        ctx = ls.expand_context(" ".join(fields))
+        ok, reasons, _ = ls.validate_diary(out.strip(), ctx)
+        assert ok, (reasons, out)
+        for w in ls.MEALTIME_KEYWORDS:
+            assert w not in out
+
+
+def test_words_to_block_respects_input():
+    block = ls.words_to_block(ls.expand_context("친구 선배랑 술 한잔 오후 7시 포차"))
+    assert "선배" not in block and "아침" in block and "맥주" in block
+    assert "술" not in block and "형" not in block  # 한 글자는 정상 단어까지 막을 수 있어서 제외
+
+
+def test_drop_invented_sentences_fallback(fake_llm):
+    outputs, _ = fake_llm
+    bad = "과제를 하러 카페에 갔다. 끝나고 맥주도 한잔 했다. 창가 자리에서 노트북으로 한참 작업했다. 생각보다 오래 걸렸지만 다 끝내고 나왔다."
+    outputs.extend([bad] * 3)
+    timings = {}
+    text, failed = _gen(timings)
+    assert failed is False and timings["diary_repaired"] is True
+    assert "맥주" not in text and text.startswith("과제를 하러 카페에 갔다.")
+
+
+def test_validator_length_limits(monkeypatch):
+    # patch 11까지는 150자/6문장이 상한이라 이런 자연스러운 일기도 버려졌음
+    long_ok = ("오늘은 동네 카페에서 밀린 과제를 했다. 창가 자리에 앉아 노트북을 켰다. 생각보다 자료 찾는 데 오래 걸렸다. "
+               "중간에 커피를 한 잔 더 시켰다. 그래도 마감 전에 다 끝내서 다행이었다. 집에 오는 길에 공원을 한 바퀴 걸었다. "
+               "바람이 시원해서 머리가 맑아졌다. 내일은 조금 더 일찍 시작해야겠다.")
+    assert 150 < len(long_ok) < 350
+    assert ls.validate_diary(long_ok, "카페 과제")[0]
+    assert not ls.validate_diary("오늘은 카페에서 과제를 했다. " * 9, "카페 과제")[0]  # 9문장은 여전히 거름
+    monkeypatch.setenv("DIARY_MAX_CHARS", "100")
+    assert not ls.validate_diary(long_ok, "카페 과제")[0]
+
+
+def test_bad_words_ids_with_fake_tokenizer():
+    class Tok:
+        def __call__(self, text, add_special_tokens=False):
+            ids = [ord(c) for c in text]
+            return {"input_ids": ids}
+
+        def decode(self, ids):
+            return "".join(chr(i) for i in ids)
+
+    ids = ls._bad_words_ids(Tok(), ["아침"])
+    assert [ord("아"), ord("침")] in ids and [ord(" "), ord("아"), ord("침")] in ids

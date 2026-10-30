@@ -130,7 +130,7 @@ def test_generate_uses_quality_prefix_clean_tags_and_short_negative(monkeypatch)
     assert pos.endswith("horn-rimmed glasses, no bangs, short hair, black hair")
     neg = cap["negative"]
     assert neg.startswith(IMAGE_NEGATIVE_BASE)
-    assert "girl, 1girl, 2girls, 3girls" in neg
+    assert "(girl:1.3), (1girl:1.3), (2girls:1.2), (3girls:1.2)" in neg
     assert "bad anatomy, bad anatomy" not in neg  # LLM 긴 negative 미사용
 
 
@@ -139,7 +139,7 @@ def test_generate_female_account_friend_is_two_girls(monkeypatch):
     assert "(2girls:1.2), female focus" in cap["positive"]
     assert "3boys" not in cap["positive"]
     assert cap["negative"].startswith(IMAGE_NEGATIVE_BASE)
-    assert "boy, 1boy, 2boys, 3boys" in cap["negative"]
+    assert "(boy:1.3), (1boy:1.3), (2boys:1.2), (3boys:1.2)" in cap["negative"]
 
 
 def test_generate_undecidable_who_falls_back_to_llm_tags(monkeypatch):

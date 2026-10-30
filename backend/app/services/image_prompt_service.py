@@ -8,13 +8,16 @@ app/services/image_prompt_service.py
 
 [.env 설정] 변환 단계가 너무 오래 걸려서(A6000 기준 93.5초) 코드 수정 없이 조합을 바꿔가며
 측정할 수 있게 환경변수로 뺐음. 아무것도 안 주면 기존 동작과 완전히 같음.
-  IMAGE_PROMPT_MODE=llm|template       (기본 llm) template이면 LLM 호출 없이 사전 매핑으로 변환
+  IMAGE_PROMPT_MODE=hybrid|llm|template (기본 hybrid, patch 12)
+      hybrid  : 사람/표정/조명/시간/장소 사전은 template로 확정 + LLM은 '장면(장소·행동·소품)'만 짧은 JSON으로 뽑음
+      llm     : 예전 방식 (LLM이 전체 태그를 만듦)
+      template: LLM 호출 없이 사전 매핑만
   IMAGE_PROMPT_MAX_NEW_TOKENS=200      (기본 200)
   IMAGE_PROMPT_DO_SAMPLE=true          (기본 true) false면 greedy, temperature/top_p 무시
   IMAGE_PROMPT_TEMPERATURE=0.3         (기본 0.3)
   IMAGE_PROMPT_NUM_EXAMPLES=5          (기본 5, 1~5) 줄일 때 남는 순서: 1인 -> 친구들 -> 놀이공원 -> 부모님 -> 대가족
   IMAGE_PROMPT_STOP_ON_JSON_CLOSE=false (기본 false) true면 JSON이 닫히는 순간 생성 중단
-  IMAGE_PROMPT_FIXED_NEGATIVE=false    (기본 false) true면 LLM은 positive만 만들고 negative는 고정값 사용
+  IMAGE_PROMPT_FIXED_NEGATIVE=true     (기본 true, patch 12) true면 LLM은 positive만 만들고 negative는 고정값 사용
                                         (negative는 매번 똑같은 긴 문자열이라 LLM이 다시 받아쓸 이유가 없음)
   IMAGE_PROMPT_MAX_ATTEMPTS=2          (기본 2) JSON 파싱 실패 시 총 시도 횟수
 """
@@ -132,13 +135,15 @@ JSON_PATTERN_POSITIVE_ONLY = re.compile(r'\{.*"positive"\s*:.*\}', re.DOTALL)
 JSON_CLOSE_STOP_STRINGS = ['"}', '"\n}', '" }']
 
 _DEFAULT_CONFIG = {
-    "mode": "llm",
+    "mode": "hybrid",
     "max_new_tokens": 200,
     "do_sample": True,
     "temperature": 0.3,
     "num_examples": 5,
     "stop_on_json_close": False,
-    "fixed_negative": False,
+    # negative는 sd3_service가 고정값(IMAGE_NEGATIVE_BASE)으로 바꿔 쓰므로 LLM이 받아쓸 이유가 없음.
+    # (false면 프롬프트의 46%가 negative 반복이고, 출력 토큰의 절반 이상을 negative 받아쓰기에 씀)
+    "fixed_negative": True,
     "max_attempts": 2,
 }
 
@@ -178,8 +183,8 @@ def get_config(overrides: dict | None = None) -> dict:
         cfg[key] = _cast(value, _ENV_KEYS[key][1])
 
     cfg["mode"] = str(cfg["mode"]).strip().lower()
-    if cfg["mode"] not in ("llm", "template"):
-        raise ValueError(f"IMAGE_PROMPT_MODE는 llm 또는 template만 가능: {cfg['mode']}")
+    if cfg["mode"] not in ("hybrid", "llm", "template"):
+        raise ValueError(f"IMAGE_PROMPT_MODE는 hybrid, llm, template만 가능: {cfg['mode']}")
     cfg["max_attempts"] = max(1, cfg["max_attempts"])
     return cfg
 
@@ -228,9 +233,133 @@ def _fallback_prompt(top_emotion: str) -> dict:
     }
 
 
+# ---------- hybrid 모드: LLM은 장면만 (patch 12) ----------
+# 예전 llm 모드의 문제: EEVE는 한국어 모델이라 danbooru 태그를 잘 몰라서
+#   'information processing technician test', 'Yonsinnae', 'October 16th', 'negative emotions' 같은 태그를 지어냄.
+#   인원수/화풍/gamjeong style 규칙은 이제 서버(cast.py, sd3_service)가 덮어쓰는데도 LLM이 그걸 하느라 시간을 씀.
+# -> 사람·표정·조명·시간은 template 사전으로 확정하고, LLM은 사용자 답변에서 장소/행동/소품만 짧게 뽑는다.
+#    입력은 사용자 답변(무엇을/이유/어디서)만 씀: 일기 본문에 LLM이 지어낸 내용(맥주, 새벽 등)이 그림으로 번지지 않게.
+SCENE_MAX_NEW_TOKENS = 70
+MAX_SCENE_OBJECTS = 3
+
+_SCENE_RULES = """너는 한국어 일기 정보를 그림 생성용 영어 장면 태그로 바꾸는 도우미다.
+
+[규칙]
+1. 영어 소문자 태그만 쓴다. 태그 하나는 1~3단어다 (danbooru 태그처럼: cafe, studying, coffee cup).
+2. 사람, 인원수, 성별, 표정, 감정, 화풍, 시간대 태그는 쓰지 않는다 (서버가 따로 붙인다).
+3. 고유명사(동네 이름, 시험 이름, 가게 이름), 날짜, 숫자는 쓰지 않는다. 일반적인 말로 바꾼다 (정보처리기사 시험 -> taking exam).
+4. '무엇을'과 '어디서'를 가장 중요하게 보고, 확실히 있을 만한 물건만 넣는다.
+5. place 1개, action 1개, objects 최대 3개.
+
+[출력 형식 - 이 JSON 한 줄만]
+{"place": "...", "action": "...", "objects": ["...", "..."]}"""
+
+_SCENE_EXAMPLES = [
+    ('무엇을="정보처리기사 실기 시험", 이유="아쉽다", 어디서="시험장"',
+     {"place": "exam hall", "action": "taking exam", "objects": ["desk", "pencil", "test paper"]}),
+    ('무엇을="친구랑 한강 산책", 이유="날씨가 좋아서", 어디서="한강공원"',
+     {"place": "riverside park", "action": "walking", "objects": ["river", "bench", "trees"]}),
+    ('무엇을="카페에서 공부", 이유="집중이 잘 돼서", 어디서="동네 카페"',
+     {"place": "cafe", "action": "studying", "objects": ["notebook", "coffee cup", "potted plant"]}),
+    ('무엇을="엄마랑 장보기", 이유="오랜만에 같이 시간을 보내서", 어디서="동네 마트"',
+     {"place": "supermarket", "action": "shopping", "objects": ["shopping cart", "grocery shelves"]}),
+    ('무엇을="동아리 친구들이랑 노래방", 이유="스트레스 풀려고", 어디서="코인노래방"',
+     {"place": "karaoke room", "action": "singing", "objects": ["microphone", "sofa"]}),
+]
+
+# 장면 태그 검사: 소문자 영어 1~3단어만 (숫자/날짜/문장/고유명사 로마자 표기는 대부분 여기서 걸러짐)
+_SCENE_TAG_RE = re.compile(r"^[a-z][a-z' -]{0,30}[a-z]$")
+_SCENE_BANNED_WORDS = {
+    "emotion", "emotions", "emotional", "feeling", "feelings", "mood", "negative", "positive",
+    "diary", "korea", "korean", "style", "girl", "boy", "girls", "boys", "man", "woman", "people", "person",
+    "solo", "smile", "expression", "morning", "afternoon", "evening", "night", "daytime",
+}
+
+
+def build_scene_prompt(what: str, why: str, where: str) -> str:
+    parts = ["A chat between a curious user and an artificial intelligence assistant.\n", _SCENE_RULES]
+    for i, (inp, out) in enumerate(_SCENE_EXAMPLES, start=1):
+        parts.append(f"[예시 {i}]\n입력: {inp}\n출력: {json.dumps(out, ensure_ascii=False)}")
+    parts.append(f'Human: 무엇을="{what}", 이유="{why}", 어디서="{where}"\nAssistant:\n')
+    return "\n\n".join(parts)
+
+
+def clean_scene_tag(tag) -> str | None:
+    """장면 태그 하나를 검사해서 쓸 수 있으면 정리된 태그, 아니면 None"""
+    if not isinstance(tag, str):
+        return None
+    t = re.sub(r"\s+", " ", tag.replace("_", " ").strip().lower())
+    if not _SCENE_TAG_RE.match(t) or len(t.split()) > 3:
+        return None
+    if set(t.split()) & _SCENE_BANNED_WORDS:
+        return None
+    return t
+
+
+def parse_scene(text: str) -> list[str] | None:
+    """LLM 출력에서 장면 JSON을 꺼내 검사된 태그 목록으로. 쓸 만한 태그가 하나도 없으면 None"""
+    m = re.search(r"\{[^{}]*\}", text or "", re.DOTALL)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = [data.get("place"), data.get("action")]
+    objects = data.get("objects") or []
+    if isinstance(objects, list):
+        raw += objects[:MAX_SCENE_OBJECTS]
+    tags = []
+    for r in raw:
+        c = clean_scene_tag(r)
+        if c and c not in tags:
+            tags.append(c)
+    return tags or None
+
+
+def _merge_scene(template_positive: str, scene_tags: list[str]) -> str:
+    """template 태그 + 장면 태그 (gamjeong style은 맨 끝 유지, 중복 제거)"""
+    tags = [t.strip() for t in template_positive.split(",") if t.strip() and t.strip() != "gamjeong style"]
+    merged = list(dict.fromkeys(tags + scene_tags + ["gamjeong style"]))
+    return ", ".join(merged)
+
+
+def _translate_hybrid(diary_text, who, emotion, where, when, gender, what, why, report, start):
+    from app.services.image_prompt_template import build_template_prompt
+    from app.services.llama_service import _generate_once, MOCK_MODE
+
+    scene_tags = None
+    if not MOCK_MODE and (what or where):
+        stats = {}
+        raw = _generate_once(build_scene_prompt(what, why, where), temperature=0.0,
+                             max_new_tokens=SCENE_MAX_NEW_TOKENS, do_sample=False, stats=stats)
+        scene_tags = parse_scene(raw)
+        print(f"  [이미지 프롬프트 변환] hybrid 장면 추출: {stats.get('elapsed_sec')}초, "
+              f"생성 {stats.get('output_tokens')}토큰, raw={raw!r} -> {scene_tags}")
+        if report is not None:
+            report["calls"].append({"attempt": 1, "is_retry": False, "parse_ok": scene_tags is not None,
+                                    "fail_reason": "" if scene_tags else "장면 JSON 없음/쓸 태그 없음",
+                                    "raw": raw, **stats})
+
+    # 장면을 얻었으면 template은 사용자 답변만 보고(일기의 지어낸 내용 배제), 실패하면 일기 본문까지 보고 사전 매칭
+    source = f"{what} {why}" if scene_tags else f"{what} {why} {diary_text}"
+    base = build_template_prompt(diary_text=source, who=who, emotion=emotion, where=where, when=when, gender=gender)
+    positive = _merge_scene(base["positive"], scene_tags) if scene_tags else base["positive"]
+    result = {"positive": positive, "negative": FALLBACK_NEGATIVE}
+    elapsed = time.time() - start
+    print(f"  [이미지 프롬프트 변환] hybrid 모드 ({'장면 반영' if scene_tags else '사전만 사용'}), "
+          f"소요시간: {elapsed:.1f}초")
+    print(f"  [이미지 프롬프트 변환] positive: {positive}")
+    if report is not None:
+        report.update(total_sec=round(elapsed, 2), fallback_used=scene_tags is None, scene=scene_tags, **result)
+    return result
+
+
 def translate_to_image_prompt(diary_text: str, who, emotion: str, where: str, when: str,
                               gender: str | None = None, config: dict | None = None,
-                              report: dict | None = None) -> dict:
+                              report: dict | None = None, what: str = "", why: str = "") -> dict:
     """
     일기 텍스트 -> {"positive": "...", "negative": "..."} 영어 danbooru 태그.
     llm 모드: 기존 일기 생성용 LLaMA를 재사용 (별도 모델 로딩 없음).
@@ -243,6 +372,9 @@ def translate_to_image_prompt(diary_text: str, who, emotion: str, where: str, wh
     if report is not None:
         report["config"] = cfg
         report["calls"] = []
+
+    if cfg["mode"] == "hybrid":
+        return _translate_hybrid(diary_text, who, emotion, where, when, gender, what, why, report, start)
 
     if cfg["mode"] == "template":
         from app.services.image_prompt_template import build_template_prompt
