@@ -275,6 +275,10 @@ _SCENE_BANNED_WORDS = {
     "emotion", "emotions", "emotional", "feeling", "feelings", "mood", "negative", "positive",
     "diary", "korea", "korean", "style", "girl", "boy", "girls", "boys", "man", "woman", "people", "person",
     "solo", "smile", "expression", "morning", "afternoon", "evening", "night", "daytime",
+    # patch 14: 사람(혼자인 그림에 'teacher'가 소품으로 들어와 사람이 늘어남)과 조명 태그도 장면 소품에서 뺌
+    "teacher", "teachers", "student", "students", "classmate", "classmates", "friend", "friends", "professor",
+    "staff", "waiter", "clerk", "customer", "customers", "crowd", "family", "child", "children", "baby",
+    "mother", "father", "mom", "dad", "coworker", "coworkers", "lighting", "sunlight", "sunset",
 }
 
 

@@ -123,7 +123,8 @@ def test_generate_uses_quality_prefix_clean_tags_and_short_negative(monkeypatch)
     pos = cap["positive"]
     assert pos.startswith(QUALITY_PREFIX + ", ")
     assert "neon" not in pos and "coin karaoke" not in pos
-    assert "karaoke room" in pos and "colorful lighting" in pos
+    assert "karaoke room" in pos
+    assert "colorful lighting" not in pos  # patch 14: 조명 태그는 화풍을 흐려서 뺌 (neon -> colorful lighting -> 제거)
     assert "(4boys:1.2), male focus" in pos  # 나 + 친구 3명
     assert "3boys" not in pos
     # 아바타 태그는 맨 끝 (patch 13: 뿔테/앞머리 없음을 Danbooru 정식 태그로)
@@ -275,3 +276,71 @@ def test_quality_prefix_env_override(monkeypatch):
     cap = _run_generate(monkeypatch, "1boy, solo, cafe", "x", "남성", ["혼자"])
     assert cap["positive"].startswith("masterpiece, best quality, absurdres, gamjeong style")
     assert "amazing quality" not in cap["positive"]
+
+
+
+# ---------- patch 14: 화풍 비교 테스트(C 조합) 반영 ----------
+
+SUBWAY_LLM = ("1boy, solo, young adult man, tired expression, sleepy, slouching, dim lighting, riding, train, book, "
+              "subway, subway train, indoors, morning, sunlight, gamjeong style")
+
+
+def test_generate_matches_style_test_c(monkeypatch):
+    # 2026-10-30 ComfyUI 시드 고정 비교에서 화풍대로 나온 C 조합: 짧은 품질 태그 + 조명/시간 태그 없음
+    cap = _run_generate(monkeypatch, SUBWAY_LLM, "x", "남성", ["혼자"])
+    assert cap["positive"] == (
+        "masterpiece, best quality, absurdres, gamjeong style, illustration, flat color, soft colors, warm colors, "
+        "(1boy:1.3), (male focus:1.2), solo, black-framed eyewear, forehead, short hair, black hair, cowboy shot, "
+        "half-closed eyes, sleepy, slouching, sitting, train, book, "
+        "subway, train interior, indoors")
+
+
+def test_light_time_tags_dropped_but_outdoor_night_kept(monkeypatch):
+    assert sd3_service.drop_light_time_tags("smile, dim lighting, cafe, indoors, morning, sunlight") == (
+        "smile, cafe, indoors", ["dim lighting", "morning", "sunlight"])
+    assert sd3_service.drop_light_time_tags("walking, river, park, outdoors, night, sunset")[0] == (
+        "walking, river, park, outdoors, night")
+    assert sd3_service.drop_light_time_tags("karaoke room, indoors, night")[0] == "karaoke room, indoors"
+    monkeypatch.setenv("IMAGE_LIGHT_TIME_TAGS", "true")
+    assert sd3_service.drop_light_time_tags("smile, dim lighting, morning")[0] == "smile, dim lighting, morning"
+
+
+def test_old_quality_prefix_can_be_restored(monkeypatch):
+    old = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+    monkeypatch.setenv("IMAGE_QUALITY_PREFIX", old)
+    cap = _run_generate(monkeypatch, "1boy, solo, cafe, very aesthetic", "x", "남성", ["혼자"])
+    assert cap["positive"].startswith(old + ", gamjeong style")
+    assert cap["positive"].count("very aesthetic") == 1  # 본문에 LLM이 넣은 건 지워짐
+
+
+def test_riding_becomes_sitting_unless_bicycle():
+    assert dt.filter_tags("riding, train, subway")[0] == "sitting, train, subway"
+    assert dt.filter_tags("riding, bicycle, park")[0] == "riding bicycle, bicycle, park"
+
+
+
+def _run_generate_avatar(monkeypatch, llm_positive, gender, who, hair_length="long", bangs=True):
+    captured = {}
+    monkeypatch.setattr(sd3_service, "translate_to_image_prompt", lambda **kw: {"positive": llm_positive, "negative": "x"})
+    monkeypatch.setattr(sd3_service, "_submit_workflow", lambda p, n: captured.update(positive=p, negative=n) or "pid")
+    monkeypatch.setattr(sd3_service, "_wait_for_result", lambda pid: b"png")
+    monkeypatch.setattr(sd3_service, "_upload_to_storage", lambda b: "http://img")
+    sd3_service.generate_diary_image(diary_text="일기", top_emotion="즐거운", who=who, where="", when="",
+                                     glasses="none", bangs=bangs, hair_length=hair_length, hair_color="갈색", gender=gender)
+    return captured["positive"]
+
+
+def test_male_group_drops_long_hair_and_bangs(monkeypatch):
+    # 2026-10-30 로그: 남자 3명(나+친구 2명)인데 아바타 'blunt bangs, long hair'가 모두에게 퍼져 여자 1명이 나옴
+    pos = _run_generate_avatar(monkeypatch, "2boys, young adults, friends, laughing, driving, car, park, outdoors",
+                               "남성", "친구,2명")
+    assert "(3boys:1.2), male focus, multiple boys" in pos
+    assert "long hair" not in pos and "blunt bangs" not in pos
+    assert pos.endswith("brown hair")  # 머리색은 남김
+
+
+def test_solo_male_and_female_group_keep_long_hair(monkeypatch):
+    pos = _run_generate_avatar(monkeypatch, "1boy, solo, cafe", "남성", ["혼자"])
+    assert "blunt bangs, long hair, brown hair" in pos  # 혼자면 (1boy:1.3) 바로 뒤라 괜찮음
+    pos = _run_generate_avatar(monkeypatch, "2girls, friends, cafe", "여성", "친구,1명")
+    assert "(2girls:1.2), female focus, multiple girls" in pos and "long hair" in pos

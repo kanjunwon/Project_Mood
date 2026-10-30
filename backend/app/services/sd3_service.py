@@ -170,18 +170,44 @@ def ensure_solo_person(positive: str, negative: str, who, gender) -> tuple[str, 
 
 # --- 이미지 품질 보정 (2026-10-09 ComfyUI 시드 고정 비교 테스트 결과 반영) ---
 # Illustrious는 품질 태그를 맨 앞에 두는 게 권장됨. LLM이 이미 같은 태그를 넣었으면 중복 제거.
-QUALITY_PREFIX = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
-_QUALITY_TAGS = {t.strip() for t in QUALITY_PREFIX.split(",")} | {"good quality", "high quality", "highres"}
+# patch 14: 2026-10-30 ComfyUI 시드 고정 비교(A~E)에서 "조명/시간 태그 제거 + 이 짧은 품질 태그" 조합(C)만
+#   gamjeong 화풍대로 나옴. amazing quality, very aesthetic은 공식 품질 태그 목록에도 없고, 모델을
+#   '정석적으로 잘 그린 애니 그림' 쪽으로 끌어당겨 LoRA 화풍을 흐리는 것으로 보임. (LoRA 1.0은 오히려 나빠짐 -> 0.8 유지)
+#   예전 값: "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+QUALITY_PREFIX = "masterpiece, best quality, absurdres"
+_QUALITY_TAGS = {t.strip() for t in QUALITY_PREFIX.split(",")} | {
+    "amazing quality", "very aesthetic", "good quality", "high quality", "highres"}  # LLM이 넣어도 본문에서 지움
 
 
 def _quality_prefix() -> str:
-    """
-    patch 13: .env IMAGE_QUALITY_PREFIX로 바꿔볼 수 있게 함 (기본값은 그대로).
-    Illustrious 공식 모델 카드의 품질 태그 목록은 worst/bad/average/good/best quality, masterpiece라서
-    amazing quality, very aesthetic은 목록에 없음. 빼면 6토큰 줄어서 75토큰 안에 들어가기 쉬움 -> 시드 고정 비교 후 결정.
-    예) IMAGE_QUALITY_PREFIX=masterpiece, best quality, absurdres
-    """
+    """.env IMAGE_QUALITY_PREFIX가 있으면 그 값 (예전 값으로 되돌리거나 다른 조합을 시험할 때)"""
     return os.environ.get("IMAGE_QUALITY_PREFIX", "").strip() or QUALITY_PREFIX
+
+
+# patch 14: 조명/시간 태그는 그림 전체 명암·색을 바꿔서 LoRA가 배운 밝고 부드러운 평면 색감을 덮음 (위 비교 테스트).
+#   - 조명 태그(dim lighting, sunlight, colorful lighting ...)는 모두 뺌
+#   - 시간 태그도 빼되, 바깥 장면(outdoors)의 night는 장면 뜻이 달라져서 남김 (밤 산책 등)
+#   .env IMAGE_LIGHT_TIME_TAGS=true면 예전처럼 다 남김
+_LIGHT_TAGS = {"dim lighting", "warm lighting", "soft warm lighting", "bright lighting", "soft lighting",
+               "colorful lighting", "cinematic lighting", "sunlight", "backlighting", "light rays", "stage lights", "dark"}
+_TIME_TAGS = {"morning", "day", "daytime", "afternoon", "evening", "sunset", "night", "dark sky", "night sky"}
+_KEEP_OUTDOOR_TIME = {"night", "night sky"}
+
+
+def drop_light_time_tags(body: str) -> tuple[str, list[str]]:
+    """조명/시간 태그 제거 -> (정리된 태그 문자열, 뺀 태그 목록)"""
+    if os.environ.get("IMAGE_LIGHT_TIME_TAGS", "false").strip().lower() in ("1", "true", "yes", "on"):
+        return body, []
+    tags = [t.strip() for t in body.split(",") if t.strip()]
+    outdoors = "outdoors" in {t.lower() for t in tags}
+    keep, removed = [], []
+    for t in tags:
+        low = t.lower()
+        if low in _LIGHT_TAGS or (low in _TIME_TAGS and not (outdoors and low in _KEEP_OUTDOOR_TIME)):
+            removed.append(t)
+        else:
+            keep.append(t)
+    return ", ".join(keep), removed
 
 # negative는 길게 쌓지 않고 핵심만 쓴다 (긴 목록 vs 짧은 목록을 같은 시드로 비교했을 때 차이가 없었음).
 # 이미지 프롬프트 LLM이 내놓는 negative(고정 긴 문자열)는 쓰지 않고 이걸로 대체한다.
@@ -362,6 +388,21 @@ def _composition_tag(body: str, solo: bool) -> str | None:
     return "cowboy shot" if solo else "upper body"
 
 
+# patch 14: 여러 명 그림에서는 아바타 태그가 '나'에게만 붙지 않고 모두에게 퍼짐 (SDXL은 태그를 특정 인물에 못 묶음).
+#   남성 계정이 긴 머리/일자 앞머리로 설정돼 있으면, Danbooru에서 이 두 태그는 대부분 여자 캐릭터 그림에 붙는 태그라
+#   남자 3명 그림에 여자 1명이 섞여 나옴 (2026-10-30 로그: 3boys + blunt bangs, long hair). -> 이 경우만 두 태그를 뺌
+_FEMININE_AVATAR_TAGS = {"long hair", "blunt bangs"}
+
+
+def _group_safe_avatar(avatar: str, gender, solo: bool) -> tuple[str, list[str]]:
+    """여러 명 + 남성 계정이면 긴 머리/일자 앞머리 태그를 뺀 아바타 태그와 뺀 목록을 돌려줌"""
+    if solo or normalize_gender(gender) != "male":
+        return avatar, []
+    tags = [t.strip() for t in avatar.split(",") if t.strip()]
+    removed = [t for t in tags if t in _FEMININE_AVATAR_TAGS]
+    return ", ".join(t for t in tags if t not in _FEMININE_AVATAR_TAGS), removed
+
+
 def _needs_age_negative(who) -> bool:
     items = who if isinstance(who, list) else [who or ""]
     text = " ".join(str(x) for x in items)
@@ -404,6 +445,9 @@ def generate_diary_image(
     if danbooru_tags.enabled():
         positive_body, dropped, renamed = danbooru_tags.filter_tags(positive_body)
         print(f"  [태그 사전] 바꿈: {', '.join(renamed) or '없음'} / 버림: {', '.join(dropped) or '없음'}")
+    positive_body, light_removed = drop_light_time_tags(positive_body)
+    if light_removed:
+        print(f"  [조명/시간 태그 뺌] {', '.join(light_removed)}")
     negative = IMAGE_NEGATIVE_BASE
     if _needs_age_negative(who):
         negative = f"{negative}, {_AGE_NEGATIVE}"
@@ -433,7 +477,12 @@ def generate_diary_image(
         comp = _composition_tag(positive_body, solo=False)
         if comp:
             positive_body = f"{positive_body}, {comp}"
-    positive = f"{_quality_prefix()}, {STYLE_PREFIX}, {positive_body}" + ("" if avatar_front else f", {avatar}")
+    if not avatar_front:
+        is_solo = cast.solo if cast is not None else "solo" in {t.strip() for t in positive_body.split(",")}
+        avatar, avatar_removed = _group_safe_avatar(avatar, gender, is_solo)
+        if avatar_removed:
+            print(f"  [아바타] 여러 명 + 남성 계정이라 뺌: {', '.join(avatar_removed)} (모두에게 퍼져서 여자로 그려짐)")
+    positive = f"{_quality_prefix()}, {STYLE_PREFIX}, {positive_body}" + ("" if avatar_front or not avatar else f", {avatar}")
     print(f"  [태그 정리] {', '.join(tag_changes) if tag_changes else '변경 없음'}")
     print(
         f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "

@@ -413,3 +413,10 @@ def test_scene_examples_use_danbooru_tags():
                 continue
             assert dt.canonical(tag)[1] >= 100, tag
         assert len(ex["objects"]) <= ips.MAX_SCENE_OBJECTS
+
+
+
+def test_scene_objects_drop_people_and_lighting():
+    raw = '{"place": "classroom", "action": "listening", "objects": ["teacher", "whiteboard"]}'
+    assert ips.parse_scene(raw) == ["classroom", "listening", "whiteboard"]  # patch 14: 사람 태그는 소품에서 뺌
+    assert ips.clean_scene_tag("sunlight") is None and ips.clean_scene_tag("students") is None

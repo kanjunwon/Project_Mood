@@ -88,10 +88,11 @@ def _parse_count(item: str) -> int | None:
 
 
 def _count_tags(boys: int, girls: int) -> list[str]:
+    # patch 14: Danbooru에서 남자만 여러 명인 그림은 "3boys, multiple boys"처럼 같이 태그됨 -> 학습 때와 같은 형태로
     if girls == 0:
-        return ["1boy", "solo"] if boys == 1 else [f"({boys}boys:1.2)", "male focus"]
+        return ["1boy", "solo"] if boys == 1 else [f"({boys}boys:1.2)", "male focus", "multiple boys"]
     if boys == 0:
-        return ["1girl", "solo"] if girls == 1 else [f"({girls}girls:1.2)", "female focus"]
+        return ["1girl", "solo"] if girls == 1 else [f"({girls}girls:1.2)", "female focus", "multiple girls"]
     g = f"{girls}girl" + ("s" if girls > 1 else "")
     b = f"{boys}boy" + ("s" if boys > 1 else "")
     return [g, b]

@@ -53,7 +53,8 @@ COMFYUI_URL=
 | `IMAGE_TAG_FILTER` | `true` | (patch 13) 태그를 Danbooru 기준으로 정리: 별칭/복수형은 정식 태그로(`working out`→`exercising`, `dumbbells`→`dumbbell`), 사전에 없거나 게시물 적은 태그는 버림 (`app/services/danbooru_tags.py`). `false`면 끔 |
 | `IMAGE_TAG_MIN_POSTS` | `100` | 이보다 Danbooru 게시물이 적은 태그는 버림 |
 | `IMAGE_COMPOSITION_TAG` | `true` | 구도 태그 1개 자동 추가 (먹기/공부 `upper body`, 걷기 `full body`, 혼자 `cowboy shot`, 여러 명 `upper body`) |
-| `IMAGE_QUALITY_PREFIX` | (비움 = 코드 기본값) | 품질 태그 바꿔보기용. 예: `masterpiece, best quality, absurdres` (6토큰 줄어서 75토큰 안에 들어가기 쉬움) |
+| `IMAGE_QUALITY_PREFIX` | (비움 = `masterpiece, best quality, absurdres`) | 품질 태그. patch 14에서 ComfyUI 시드 고정 비교 결과 화풍이 유지되는 짧은 조합으로 바꿈. 예전 값으로 되돌리려면 `masterpiece, best quality, amazing quality, very aesthetic, absurdres` |
+| `IMAGE_LIGHT_TIME_TAGS` | `false` | (patch 14) 조명 태그(dim lighting, sunlight 등)와 시간 태그를 뺌 (바깥 장면의 night만 남김). 화풍을 흐려서. `true`면 예전처럼 남김 |
 | `ENABLE_DEBUG_ENDPOINTS` | `false` | 측정할 때만 `true` (`/debug/*` 등록) |
 
 **일기 생성 / 감정 분석 설정 (선택, patch 12)** — 상세는 `app/services/llama_service.py`, `kobert_service.py` 주석

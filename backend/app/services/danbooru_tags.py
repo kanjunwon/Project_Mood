@@ -150,12 +150,19 @@ def filter_tags(positive: str) -> tuple[str, list[str], list[str]]:
             seen.add(low)
             out.append(_format(tag, weight) if low not in KEEP_TAGS else (f"({tag}:{weight})" if weight else tag))
 
+    all_lows = {t.strip().lower() for t in (positive or "").split(",")}
     for raw in (t.strip() for t in (positive or "").split(",")):
         if not raw:
             continue
         m = _WEIGHT_RE.match(raw)
         inner, weight = (m.group(1).strip(), m.group(2)) if m else (raw, None)
         low = inner.lower()
+        if low == "riding":
+            # patch 14: Danbooru의 riding은 주로 말/자전거 타는 장면. 지하철/버스는 앉아 있는 모습으로
+            new = "riding bicycle" if all_lows & {"bicycle", "bike"} else "sitting"
+            changed.append(f"riding->{new}")
+            add(new, weight)
+            continue
         if low in KEEP_TAGS:
             add(inner, weight)
             continue
