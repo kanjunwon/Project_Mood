@@ -26,12 +26,13 @@ def get_generation_config() -> dict:
         '~했다', '~더라' 같은 자연스러운 일기 표현까지 피하게 만들었음. 일기/이미지 변환 공통.
     LLM_TOP_P (기본 0.9)
     DIARY_NO_REPEAT_NGRAM (기본 4): 같은 4토큰 묶음 반복만 막음 (반복 방지는 이걸로 대신함)
-    DIARY_TEMPERATURES (기본 "0.6,0.75,0.9"): 시도별 온도. 예전처럼 내리면 재시도마다 같은 문장이 나와서 올림
+    DIARY_TEMPERATURES (기본 "0.45,0.55,0.65"): 시도별 온도. patch 12에서 0.6~0.9로 올렸더니 입력에 없는 메뉴/소품을
+        지어내는 일이 늘어서(짬뽕 -> 새우튀김) patch 13에서 예전 첫 시도 값(0.45)부터 조금씩만 올리게 바꿈
     DIARY_MIN_CHARS / DIARY_MAX_CHARS (기본 60 / 350): 예전 상한 200자 때문에 일기가 짧게만 통과했음
     DIARY_BLOCK_WORDS (기본 true): 입력에 없는 식사시간대/술 종류/관계 단어를 생성 단계에서 금지
     """
     temps = []
-    for part in (os.environ.get("DIARY_TEMPERATURES", "") or "0.6,0.75,0.9").split(","):
+    for part in (os.environ.get("DIARY_TEMPERATURES", "") or "0.45,0.55,0.65").split(","):
         try:
             temps.append(float(part))
         except ValueError:
@@ -40,7 +41,7 @@ def get_generation_config() -> dict:
         "repetition_penalty": _env_float("LLM_REPETITION_PENALTY", 1.05),
         "top_p": _env_float("LLM_TOP_P", 0.9),
         "no_repeat_ngram_size": _env_int("DIARY_NO_REPEAT_NGRAM", 4),
-        "temperatures": temps or [0.6, 0.75, 0.9],
+        "temperatures": temps or [0.45, 0.55, 0.65],
         "min_chars": _env_int("DIARY_MIN_CHARS", 60),
         "max_chars": _env_int("DIARY_MAX_CHARS", 350),
         "block_words": os.environ.get("DIARY_BLOCK_WORDS", "true").strip().lower() not in ("0", "false", "no", "off"),
@@ -148,6 +149,65 @@ IMPLIED_RELATION_TRIGGERS = {
 ALCOHOL_KEYWORDS = ("소주", "맥주", "막걸리", "와인", "폭탄주", "술")
 MEALTIME_KEYWORDS = ("아침", "점심", "저녁", "새벽")
 
+# patch 13: 입력에 없는 음식/메뉴 지어내기 검사 ("짬뽕 먹음"인데 "새우튀김도 시켰다")
+# 2글자 이상만. '밥', '빵', '회', '떡'처럼 한 글자는 다른 단어 속에 너무 자주 섞여서 제외
+FOOD_KEYWORDS = (
+    # 중식
+    "짜장면", "자장면", "짬뽕", "탕수육", "군만두", "만두", "볶음밥", "새우튀김", "깐풍기", "유린기", "양장피",
+    "마라탕", "마라샹궈", "꿔바로우",
+    # 한식
+    "김치찌개", "된장찌개", "부대찌개", "순두부", "찌개", "전골", "국밥", "순대국", "설렁탕", "갈비탕", "삼계탕",
+    "감자탕", "해장국", "비빔밥", "김밥", "삼각김밥", "떡볶이", "떡국", "순대", "튀김", "어묵", "오뎅",
+    "라면", "컵라면", "냉면", "칼국수", "수제비", "국수", "불고기", "갈비", "삼겹살", "목살", "고기", "곱창", "막창",
+    "족발", "보쌈", "닭갈비", "찜닭", "제육", "김치", "파전", "김치전", "계란말이", "계란찜", "도시락", "주먹밥", "새우",
+    # 양식/분식/패스트푸드
+    "치킨", "피자", "햄버거", "버거", "감자튀김", "파스타", "스파게티", "스테이크", "샐러드", "샌드위치", "토스트",
+    "핫도그", "타코", "돈까스", "돈가스", "우동", "라멘", "초밥", "스시", "덮밥",
+    # 간식/디저트/음료
+    "케이크", "과자", "아이스크림", "빙수", "팝콘", "마카롱", "와플", "도넛", "쿠키", "젤리", "사탕", "초콜릿",
+    "붕어빵", "호떡", "커피", "라떼", "아메리카노", "콜라", "사이다", "주스", "밀크티", "버블티", "스무디", "에이드",
+)
+
+# 입력에 이 단어가 있으면 같이 써도 자연스러운 음식 (카페 -> 커피). '중국집'은 일부러 없음:
+# 짬뽕만 먹었다고 했는데 탕수육/군만두를 붙이는 게 바로 문제였던 경우라서.
+FOOD_IMPLIED_BY = {
+    "카페": ("커피", "라떼", "아메리카노", "케이크", "쿠키", "스무디", "에이드", "밀크티", "버블티"),
+    "커피": ("라떼", "아메리카노"),
+    "생일": ("케이크",),
+    "영화": ("팝콘", "콜라"),
+    "고깃집": ("고기", "삼겹살", "목살", "갈비"),
+    "삼겹살": ("고기",),
+    "분식": ("떡볶이", "김밥", "순대", "튀김", "어묵", "라면"),
+    "치킨": ("콜라",),
+    "피자": ("콜라",),
+    "햄버거": ("감자튀김", "콜라"),
+    "편의점": ("컵라면", "삼각김밥", "도시락"),
+}
+
+# 생성 단계 금지(bad_words)에서는 빼는 음식 단어: 다른 말의 일부와 토큰이 겹칠 수 있음
+# ('~라면' 가정형, '그만두다', '물고기' 등). 이 단어들도 검증기에서는 계속 잡음.
+_FOOD_NO_GENERATION_BLOCK = {"라면", "만두", "고기", "김치", "튀김", "새우", "국수", "갈비", "순대", "어묵", "주스"}
+
+
+def food_context(context_str: str) -> str:
+    """음식 검사용 문맥: 입력 + 입력에서 자연스럽게 따라오는 음식(FOOD_IMPLIED_BY)"""
+    extra = [f for trigger, foods in FOOD_IMPLIED_BY.items() if trigger in context_str for f in foods]
+    return context_str + " " + " ".join(extra)
+
+
+def has_invented_food(text: str, context_str: str) -> str | None:
+    """
+    일기에 입력에 없는 음식 단어가 있으면 그 단어를 반환.
+    앞 글자가 한글이면 다른 단어의 일부로 보고 건너뜀 ('그만두다'의 만두, '물고기'의 고기, '이라면'의 라면).
+    """
+    ctx = food_context(context_str)
+    for kw in FOOD_KEYWORDS:
+        if kw in ctx:
+            continue
+        if re.search(rf"(?<![가-힣]){kw}", text):
+            return kw
+    return None
+
 # "술", "형", "과장" 같은 짧은 키워드는 무관한 흔한 단어에도 다 포함돼서 오탐지가 잦음
 # (미술관, 인형, 과장해서 등) - 검사 전에 이런 단어들을 먼저 지워버리고 나서 진짜 매칭 확인
 FALSE_POSITIVE_EXCLUSIONS = {
@@ -244,7 +304,12 @@ def validate_diary(text: str, context_str: str = ""):
     if not meal_ok:
         reasons.append(f"식사시간대 지어냄({invented_meal})")
 
-    checks = [length_ok, count_ok, formal_ok, phrase_ok, cliche_ok, dahaeng_ok, relation_ok, alcohol_ok, meal_ok]
+    invented_food = has_invented_food(text, context_str)
+    food_ok = invented_food is None
+    if not food_ok:
+        reasons.append(f"음식 지어냄({invented_food})")
+
+    checks = [length_ok, count_ok, formal_ok, phrase_ok, cliche_ok, dahaeng_ok, relation_ok, alcohol_ok, meal_ok, food_ok]
     score = sum(checks)
     passed = all(checks)
     return passed, reasons, score
@@ -292,48 +357,66 @@ for _old, _new in _FEWSHOT_MEALTIME_FIXES:
 _RULE4 = ("4. 분량은 3~4문장, 100자 안팎으로 쓴다. 정보가 적어도 그날의 장소 분위기, 몸 상태, 사소한 "
           "잡생각 같은 일반적인 배경으로 채워서 한 문장짜리로 끝내지 않는다.\n")
 assert SYSTEM_PREAMBLE_EMOTION_WORD.count(_RULE4) == 1
-SYSTEM_PREAMBLE_APP = SYSTEM_PREAMBLE_EMOTION_WORD.replace(
-    _RULE4,
-    "4. 분량은 4~5문장, 130~200자 정도로 쓴다. 답변이 짧아도(예: 이유가 '아쉽다' 한 마디) 그 장소에서 흔히 "
-    "보이는 모습, 그때의 몸 상태, 사소한 잡생각 같은 일반적인 내용으로 자연스럽게 풀어 쓴다. "
-    "답변 문장을 그대로 옮겨 적지 말고 내 말로 바꿔 쓴다.\n",
+# patch 13: patch 12의 "4~5문장, 130~200자"는 짧은 답변으로 분량을 채우려다 메뉴/소품을 지어내게 만들어서
+# 3~4문장으로 되돌리고, 모자란 분량은 '새 사건' 대신 기분/몸 상태/분위기로만 채우게 함.
+# 규칙 5의 '괜찮음' 예시(생일이면 케이크 같은 소품)도 음식/물건을 덧붙여도 된다는 신호라서 app_style에서는 바꿈.
+_RULE5_OK = ("   - 괜찮음: 그 장소/상황에서 흔히 있는 배경 묘사 (예: 공원이면 사람들, 생일이면 케이크 정도의 "
+             "일반적인 소품) - 이 정도는 자연스러움을 위해 살짝 곁들여도 된다.\n")
+_RULE5_BAN = "   - 절대 금지: 확인할 수 없는 결과나 판단(예: '시험을 잘 봤다', '다들 좋아했다'), 구체적인 "
+assert SYSTEM_PREAMBLE_EMOTION_WORD.count(_RULE5_OK) == 1 and SYSTEM_PREAMBLE_EMOTION_WORD.count(_RULE5_BAN) == 1
+SYSTEM_PREAMBLE_APP = (
+    SYSTEM_PREAMBLE_EMOTION_WORD
+    .replace(
+        _RULE4,
+        "4. 분량은 3~4문장, 90~150자 정도로 쓴다 (답변이 길 때만 5문장까지). 답변 문장을 그대로 옮겨 적지 말고 "
+        "내 말로 바꿔 쓴다. 분량이 모자라면 새로운 일이나 물건을 만들지 말고 그때의 기분, 몸 상태, "
+        "장소 분위기로 채운다.\n",
+    )
+    .replace(
+        _RULE5_OK,
+        "   - 괜찮음: 그 장소의 분위기나 풍경 묘사 (예: 공원이면 오가는 사람들, 날씨, 바람) - 살짝 곁들이는 정도만.\n",
+    )
+    .replace(
+        _RULE5_BAN,
+        "   - 절대 금지: 답변에 없는 음식·메뉴·음료·물건 (예: 한 가지 메뉴만 먹었다고 했으면 다른 메뉴를 "
+        "덧붙이지 않는다), " + _RULE5_BAN[len("   - 절대 금지: "):],
+    )
 )
 
 _APP_HUMAN = "Human: 다음 정보를 바탕으로 감성적인 일기를 작성해라:\n\n"
 FEWSHOT_APP_STYLE = (
+    # patch 13: 예시 일기에도 입력에 없는 소품/음식(케이크, 과자, 물 한 잔, 사진)이 들어가 있어서 모델이 그대로 따라 했음
+    # -> 덧붙이는 내용은 기분/몸 상태/분위기만. 음식 예시(짜장면)를 넣어 "그 메뉴만" 쓰는 모습을 보여줌.
     _APP_HUMAN +
     "무엇을: 늦게까지 과제\n이유: 마감이 내일이라 급해서\n누구와: 혼자\n"
     "언제: 10월 21일 화요일 오후 11시\n어디서: 자취방\n"
     "Assistant:\n"
-    "마감이 내일이라 결국 자취방에서 늦게까지 과제를 붙잡고 있었다. 처음엔 금방 끝날 줄 알았는데 고칠 게 계속 보였다. "
-    "중간에 기지개 한 번 켜고 물 한 잔 마신 다음 다시 앉았다. 겨우 마무리하고 저장 버튼을 누르니까 몸에 힘이 쭉 빠졌다. "
-    "솔직히 좀 피곤했다.\n\n" +
+    "마감이 내일이라 결국 자취방에서 늦게까지 과제를 붙잡고 있었다. 처음엔 금방 끝날 줄 알았는데 생각보다 손볼 게 많았다. "
+    "겨우 마무리하고 나니까 어깨가 뻐근하고 눈도 침침했다. 솔직히 좀 피곤했다.\n\n" +
     _APP_HUMAN +
     "무엇을: 정보처리기사 실기 시험\n이유: 아쉽다\n누구와: 혼자\n"
     "언제: 10월 25일 토요일 오후 2시\n어디서: 시험장\n"
     "Assistant:\n"
-    "오늘 정보처리기사 실기 시험을 보러 시험장에 다녀왔다. 나름대로 준비한다고 했는데 막상 자리에 앉으니까 생각보다 긴장이 됐다. "
-    "끝나고 나오는 길에 자꾸 문제들이 머릿속에서 맴돌았다. 결과는 나와 봐야 알겠지만 마음이 좀 아쉽다. "
-    "오늘은 일찍 쉬어야겠다.\n\n" +
+    "오늘 정보처리기사 실기 시험을 보러 시험장에 다녀왔다. 나름 준비한다고 했는데 막상 자리에 앉으니까 긴장이 많이 됐다. "
+    "끝나고 나오는 길에도 문제들이 자꾸 머릿속에 맴돌았다. 마음이 좀 아쉽다.\n\n" +
+    _APP_HUMAN +
+    "무엇을: 짜장면 먹음\n이유: 오랜만에 먹으니까 맛있어서\n누구와: 혼자\n"
+    "언제: 10월 14일 화요일 오후 1시\n어디서: 집\n"
+    "Assistant:\n"
+    "오늘은 집에서 짜장면을 먹었다. 오랜만에 먹어서 그런지 한 입 먹자마자 맛있다는 말이 절로 나왔다. "
+    "혼자 조용히 먹으니까 오히려 맛에 더 집중이 됐다. 배가 든든하니 기분이 좋았다.\n\n" +
     _APP_HUMAN +
     "무엇을: 친구랑 한강 산책\n이유: 날씨가 좋아서\n누구와: 친구\n"
     "언제: 10월 18일 토요일 오후 4시\n어디서: 한강공원\n"
     "Assistant:\n"
-    "날씨가 좋아서 친구랑 한강에 나갔다. 바람이 선선해서 걷기 딱 좋았다. 강을 따라 한참 걷다가 벤치에 앉아서 "
-    "이런저런 얘기를 나눴다. 해가 질 무렵 하늘 색이 예뻐서 둘이서 사진도 몇 장 찍었다. 오랜만에 기분이 상쾌했다.\n\n" +
+    "날씨가 좋아서 친구랑 한강에 나갔다. 바람이 선선해서 걷기 딱 좋았다. "
+    "강을 따라 천천히 걸으면서 이런저런 얘기를 나눴다. 오랜만에 기분이 상쾌했다.\n\n" +
     _APP_HUMAN +
     "무엇을: 엄마랑 장보기\n이유: 오랜만에 같이 시간을 보내서 좋았다\n누구와: 엄마\n"
     "언제: 10월 12일 일요일 오전 11시\n어디서: 동네 마트\n"
     "Assistant:\n"
     "오랜만에 엄마랑 동네 마트에 장을 보러 갔다. 엄마는 카트를 밀면서 이것저것 꼼꼼하게 고르셨다. "
-    "나는 옆에서 따라다니다가 먹고 싶은 과자를 슬쩍 카트에 넣었다. 별거 아닌데 둘이 같이 돌아다니는 시간이 괜히 좋았다. "
-    "마음이 편안했다.\n\n" +
-    _APP_HUMAN +
-    "무엇을: 친구 생일 축하\n이유: 친한 친구 생일이라 챙겨주고 싶어서\n누구와: 친구\n"
-    "언제: 10월 3일 금요일 오후 7시\n어디서: 친구네 집\n"
-    "Assistant:\n"
-    "친한 친구 생일이라 케이크를 하나 사 들고 걔네 집에 갔다. 초에 불을 붙이고 노래를 불러 줬더니 친구가 쑥스러워하면서 웃었다. "
-    "이런저런 얘기를 하다 보니 시간이 금방 갔다. 집에 돌아오는 길에 챙겨 주길 잘했다는 생각이 들었다. 기분이 좋았다.\n"
+    "별거 아닌데 둘이 같이 돌아다니는 시간이 괜히 좋았다. 마음이 편안했다.\n"
 )
 
 PROMPT_VARIANTS = {
@@ -350,8 +433,8 @@ _FINAL_INSTRUCTION = (
     "맥주/소주 같은 구체적인 종류는 쓰지 말 것. 입력의 '무엇을'과 '이유'를 반드시 반영할 것. 3~4문장으로 쓸 것)"
 )
 _FINAL_INSTRUCTION_APP = (
-    "(정보에 없는 음식/음료/대화내용/결과 판단은 지어내지 말 것. 아침/점심/저녁/새벽 같은 시간대 단어는 쓰지 말 것. "
-    "'술'은 입력에 적힌 그대로 '술'이라고만 쓸 것. '무엇을'과 '이유'를 내 말로 풀어서 4~5문장으로 쓰고, "
+    "(정보에 없는 음식/메뉴/음료/물건/대화내용/결과 판단은 절대 지어내지 말 것. 아침/점심/저녁/새벽 같은 시간대 단어는 "
+    "쓰지 말 것. '술'은 입력에 적힌 그대로 '술'이라고만 쓸 것. '무엇을'과 '이유'를 내 말로 풀어서 3~4문장으로 쓰고, "
     "마지막에 그날 기분을 평범한 말 하나로 적을 것)"
 )
 
@@ -448,15 +531,23 @@ def _generate_once(
     return generated_text.split("Human:")[0].strip()
 
 
+# patch 13: "점심"만 금지해도 실제 생성에선 "점심으로"가 다른 토큰 조합으로 쪼개져서 못 막은 경우가 있었음
+# (2026-10-30 로그: '어제 점심으로…'). 조사가 붙은 흔한 형태도 같이 금지 목록에 넣음.
+_JOSA = ("에", "은", "는", "이", "을", "도", "만", "으로", "까지", "부터", "때", "쯤", "엔", "이랑")
+_JOSA_WORDS = set(MEALTIME_KEYWORDS) | {"소주", "맥주", "막걸리", "와인", "폭탄주"}
+
+
 def _bad_words_ids(tokenizer, words: list) -> list:
     """
     금지할 단어 -> 토큰 id 열 목록 (generate의 bad_words_ids 형식).
     같은 단어도 앞에 공백이 있을 때/없을 때 토큰이 달라서 둘 다 넣음.
     SentencePiece 계열은 공백이 '▁' 토큰으로 따로 붙는 경우가 있어서, 공백만 있는 맨 앞 토큰을 뗀 것도 넣음.
+    식사시간대/술 단어는 조사가 붙은 형태("점심으로")도 넣음 (_JOSA_WORDS).
     """
     out = set()
     for w in words:
-        for variant in (w, " " + w):
+        forms = [w] + ([w + j for j in _JOSA] if w in _JOSA_WORDS else [])
+        for variant in [f for form in forms for f in (form, " " + form)]:
             ids = tokenizer(variant, add_special_tokens=False)["input_ids"]
             if not ids:
                 continue
@@ -473,20 +564,24 @@ _BLOCK_CANDIDATES = (
     + ("소주", "맥주", "막걸리", "와인", "폭탄주")
     + tuple(k for k in RELATION_KEYWORDS if len(k) >= 2)
 )
+_FOOD_BLOCK_CANDIDATES = tuple(f for f in FOOD_KEYWORDS if f not in _FOOD_NO_GENERATION_BLOCK)
 
 
 def words_to_block(context_str: str) -> list[str]:
     """입력(context)에 없는 금지 후보만 골라서 반환 (입력에 '선배'가 있으면 '선배'는 써도 됨)"""
-    return [w for w in _BLOCK_CANDIDATES if w not in context_str]
+    ctx_food = food_context(context_str)
+    return ([w for w in _BLOCK_CANDIDATES if w not in context_str]
+            + [f for f in _FOOD_BLOCK_CANDIDATES if f not in ctx_food])
 
 
 def _drop_invented_sentences(text: str, context_str: str) -> str:
-    """입력에 없는 식사시간대/술/관계 단어가 들어간 문장만 빼고 나머지를 이어 붙임"""
+    """입력에 없는 식사시간대/술/관계/음식 단어가 들어간 문장만 빼고 나머지를 이어 붙임"""
     keep = []
     for sent in _split_sentences(text):
         if (has_invented_word(sent, context_str, MEALTIME_KEYWORDS)
                 or has_invented_word(sent, context_str, ALCOHOL_KEYWORDS)
-                or has_invented_word(sent, context_str, RELATION_KEYWORDS)):
+                or has_invented_word(sent, context_str, RELATION_KEYWORDS)
+                or has_invented_food(sent, context_str)):
             continue
         keep.append(sent.strip())
     return " ".join(keep)

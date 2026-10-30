@@ -50,19 +50,23 @@ COMFYUI_URL=
 | `IMAGE_PROMPT_STOP_ON_JSON_CLOSE` | `false` | JSON이 닫히면 생성 중단 |
 | `IMAGE_PROMPT_FIXED_NEGATIVE` | `true` | (llm 모드) LLM은 positive만 생성, negative는 고정값. 예전처럼 하려면 `false` |
 | `IMAGE_PROMPT_MAX_ATTEMPTS` | `2` | JSON 파싱 실패 시 총 시도 횟수 |
+| `IMAGE_TAG_FILTER` | `true` | (patch 13) 태그를 Danbooru 기준으로 정리: 별칭/복수형은 정식 태그로(`working out`→`exercising`, `dumbbells`→`dumbbell`), 사전에 없거나 게시물 적은 태그는 버림 (`app/services/danbooru_tags.py`). `false`면 끔 |
+| `IMAGE_TAG_MIN_POSTS` | `100` | 이보다 Danbooru 게시물이 적은 태그는 버림 |
+| `IMAGE_COMPOSITION_TAG` | `true` | 구도 태그 1개 자동 추가 (먹기/공부 `upper body`, 걷기 `full body`, 혼자 `cowboy shot`, 여러 명 `upper body`) |
+| `IMAGE_QUALITY_PREFIX` | (비움 = 코드 기본값) | 품질 태그 바꿔보기용. 예: `masterpiece, best quality, absurdres` (6토큰 줄어서 75토큰 안에 들어가기 쉬움) |
 | `ENABLE_DEBUG_ENDPOINTS` | `false` | 측정할 때만 `true` (`/debug/*` 등록) |
 
 **일기 생성 / 감정 분석 설정 (선택, patch 12)** — 상세는 `app/services/llama_service.py`, `kobert_service.py` 주석
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `DIARY_PROMPT_VARIANT` | `app_style` | 일기 프롬프트 변형. `app_style`: 앱 실제 입력 형태(짧은 답변, "10월 25일 토요일 오후 2시")에 맞춘 예시 + 4~5문장. 예전으로 되돌리려면 `fewshot_no_mealtime` |
+| `DIARY_PROMPT_VARIANT` | `app_style` | 일기 프롬프트 변형. `app_style`: 앱 실제 입력 형태(짧은 답변, "10월 25일 토요일 오후 2시")에 맞춘 예시 + 3~4문장 (patch 13: 입력에 없는 음식·물건은 쓰지 않게 예시/규칙 수정). 예전으로 되돌리려면 `fewshot_no_mealtime` |
 | `LLM_REPETITION_PENALTY` | `1.05` | 예전 값 1.2는 few-shot 예시 단어까지 벌점을 줘서 "좋았다/뿌듯했다" 같은 자연스러운 끝맺음을 피하게 만들었음 |
 | `LLM_TOP_P` | `0.9` | |
 | `DIARY_NO_REPEAT_NGRAM` | `4` | 같은 4토큰 묶음 반복 금지 (penalty를 낮춘 대신 문장 반복 방지). `0`이면 끔 |
-| `DIARY_TEMPERATURES` | `0.6,0.75,0.9` | 시도별 temperature (검증 실패 시 다음 값으로 재시도) |
+| `DIARY_TEMPERATURES` | `0.45,0.55,0.65` | 시도별 temperature (검증 실패 시 다음 값으로 재시도). patch 12의 0.6~0.9는 메뉴/소품을 지어내는 일이 늘어서 낮춤 |
 | `DIARY_MIN_CHARS` / `DIARY_MAX_CHARS` | `60` / `350` | 검증기 길이 범위 (문장 수는 2~8) |
-| `DIARY_BLOCK_WORDS` | `true` | 입력에 없는 식사시간대(아침/점심/저녁…)·술 종류·관계 단어를 생성 단계에서 막음 |
+| `DIARY_BLOCK_WORDS` | `true` | 입력에 없는 식사시간대(아침/점심/저녁…)·술 종류·관계·음식 단어를 생성 단계에서 막음 (식사시간대/술은 "점심으로"처럼 조사 붙은 형태도). 음식은 검증기도 검사함(`음식 지어냄`) |
 | `KOBERT_WHY_WEIGHT` | `0.4` | 감정 = (1-w)·일기 + w·'이유' 답변. `0`이면 예전처럼 일기만 봄 |
 
 `.env` 파일은 PowerShell heredoc(`@'...'@ | Out-File -Encoding utf8`)이나 `cat > file << 'EOF'` 방식으로 만들 때, 종료 마커가 제대로 안 닫히면 스크립트 줄이 그대로 섞여 들어가는 경우가 있었음 — 만든 후 `cat .env`로 내용 한 번 확인하는 습관 추천.

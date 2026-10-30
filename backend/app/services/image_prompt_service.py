@@ -240,31 +240,33 @@ def _fallback_prompt(top_emotion: str) -> dict:
 # -> 사람·표정·조명·시간은 template 사전으로 확정하고, LLM은 사용자 답변에서 장소/행동/소품만 짧게 뽑는다.
 #    입력은 사용자 답변(무엇을/이유/어디서)만 씀: 일기 본문에 LLM이 지어낸 내용(맥주, 새벽 등)이 그림으로 번지지 않게.
 SCENE_MAX_NEW_TOKENS = 70
-MAX_SCENE_OBJECTS = 3
+MAX_SCENE_OBJECTS = 2  # patch 13: 소품이 많을수록 뒤엉켜 그려짐 (헬스장: 벤치+바벨+덤벨)
 
 _SCENE_RULES = """너는 한국어 일기 정보를 그림 생성용 영어 장면 태그로 바꾸는 도우미다.
 
 [규칙]
-1. 영어 소문자 태그만 쓴다. 태그 하나는 1~3단어다 (danbooru 태그처럼: cafe, studying, coffee cup).
+1. 영어 소문자 태그만 쓴다. 태그 하나는 1~3단어이고, danbooru에 실제로 있는 흔한 태그를 쓴다 (cafe, studying, cup).
+   명사는 단수형으로 쓴다 (dumbbell, cup, book).
 2. 사람, 인원수, 성별, 표정, 감정, 화풍, 시간대 태그는 쓰지 않는다 (서버가 따로 붙인다).
 3. 고유명사(동네 이름, 시험 이름, 가게 이름), 날짜, 숫자는 쓰지 않는다. 일반적인 말로 바꾼다 (정보처리기사 시험 -> taking exam).
 4. '무엇을'과 '어디서'를 가장 중요하게 보고, 확실히 있을 만한 물건만 넣는다.
-5. place 1개, action 1개, objects 최대 3개.
+5. place 1개, action 1개, objects 최대 2개 (그 장면에 꼭 필요한 것만).
 
 [출력 형식 - 이 JSON 한 줄만]
 {"place": "...", "action": "...", "objects": ["...", "..."]}"""
 
 _SCENE_EXAMPLES = [
+    # patch 13: 예시도 Danbooru에 있는 태그로 (exam hall, riverside park 같은 건 태그가 아니라 버려짐)
     ('무엇을="정보처리기사 실기 시험", 이유="아쉽다", 어디서="시험장"',
-     {"place": "exam hall", "action": "taking exam", "objects": ["desk", "pencil", "test paper"]}),
+     {"place": "classroom", "action": "writing", "objects": ["school desk", "pencil"]}),
     ('무엇을="친구랑 한강 산책", 이유="날씨가 좋아서", 어디서="한강공원"',
-     {"place": "riverside park", "action": "walking", "objects": ["river", "bench", "trees"]}),
+     {"place": "park", "action": "walking", "objects": ["river", "tree"]}),
     ('무엇을="카페에서 공부", 이유="집중이 잘 돼서", 어디서="동네 카페"',
-     {"place": "cafe", "action": "studying", "objects": ["notebook", "coffee cup", "potted plant"]}),
-    ('무엇을="엄마랑 장보기", 이유="오랜만에 같이 시간을 보내서", 어디서="동네 마트"',
-     {"place": "supermarket", "action": "shopping", "objects": ["shopping cart", "grocery shelves"]}),
+     {"place": "cafe", "action": "studying", "objects": ["notebook", "cup"]}),
+    ('무엇을="짬뽕 먹음", 이유="맛있어서", 어디서="중국집"',
+     {"place": "restaurant", "action": "eating", "objects": ["noodles", "bowl"]}),
     ('무엇을="동아리 친구들이랑 노래방", 이유="스트레스 풀려고", 어디서="코인노래방"',
-     {"place": "karaoke room", "action": "singing", "objects": ["microphone", "sofa"]}),
+     {"place": "karaoke room", "action": "singing", "objects": ["microphone", "couch"]}),
 ]
 
 # 장면 태그 검사: 소문자 영어 1~3단어만 (숫자/날짜/문장/고유명사 로마자 표기는 대부분 여기서 걸러짐)
@@ -320,9 +322,25 @@ def parse_scene(text: str) -> list[str] | None:
 
 
 def _merge_scene(template_positive: str, scene_tags: list[str]) -> str:
-    """template 태그 + 장면 태그 (gamjeong style은 맨 끝 유지, 중복 제거)"""
-    tags = [t.strip() for t in template_positive.split(",") if t.strip() and t.strip() != "gamjeong style"]
-    merged = list(dict.fromkeys(tags + scene_tags + ["gamjeong style"]))
+    """
+    template 태그 + 장면 태그 (gamjeong style은 맨 끝 유지, 중복 제거)
+    patch 13: 순서를 [인물/표정] -> [장면 행동/소품] -> [사전 행동] -> [장소/시간]으로.
+    프롬프트가 75토큰을 넘으면 ComfyUI가 뒷부분을 따로 잘라 인코딩하는데, 예전엔 장면 소품(noodles, dumbbells)이
+    맨 뒤라서 잘린 덩어리에 들어갔음. 덜 중요한 시간/장소 태그를 뒤로 보냄.
+    """
+    from app.services.image_prompt_template import ACTIVITY_DICT, PLACE_DICT, TIME_TAG_WORDS
+
+    def split(text):
+        return [t.strip() for t in text.split(",") if t.strip()]
+
+    activity = {t for _, v in ACTIVITY_DICT for t in split(v)}
+    place_time = {t for v in PLACE_DICT.values() for t in split(v)} | set(TIME_TAG_WORDS)
+    tags = [t for t in split(template_positive) if t != "gamjeong style"]
+    head = [t for t in tags if t not in activity and t not in place_time]
+    tmpl_activity = [t for t in tags if t in activity]
+    tmpl_place = [t for t in tags if t in place_time and t not in activity]
+    scene_place, scene_rest = scene_tags[:1], scene_tags[1:]
+    merged = list(dict.fromkeys(head + scene_rest + tmpl_activity + scene_place + tmpl_place + ["gamjeong style"]))
     return ", ".join(merged)
 
 

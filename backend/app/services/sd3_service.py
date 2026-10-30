@@ -8,6 +8,7 @@ app/services/sd3_service.py
 ComfyUI API(/prompt, /history, /view)를 호출해 이미지를 만들고,
 결과를 Supabase Storage에 업로드한 뒤 공개 URL을 반환한다.
 """
+import os
 import re
 import time
 import uuid
@@ -16,6 +17,7 @@ import requests
 
 from app.models.sd3_loader import COMFYUI_URL, load_workflow_template
 from app.services.cast import build_cast, strip_person_tags
+from app.services import danbooru_tags
 from app.services.image_prompt_service import translate_to_image_prompt
 from app.database import supabase
 
@@ -34,9 +36,12 @@ FALLBACK_NEGATIVE_PROMPT = (
 )
 
 # 안경 3종 (디자인 확정: 뿔테/동그란/안 씀)
+# patch 13: "horn-rimmed glasses"는 Danbooru 태그가 아니라서 둥근 안경으로 그려지곤 했음 -> 정식 태그로
+#   뿔테에 가장 가까운 태그: black-framed eyewear(36,715건), 동그란: round eyewear(42,592건, "round glasses"의 정식 이름)
+#   (eyewear 태그만으로도 안경이 그려져서 "glasses"는 따로 안 붙임 - 프롬프트 75토큰 안에 넣으려고)
 GLASSES_TAG_MAP = {
-    "horn_rimmed": "horn-rimmed glasses",
-    "round": "round glasses",
+    "horn_rimmed": "black-framed eyewear",
+    "round": "round eyewear",
     "none": None,  # 안경 안 씀 -> 태그 자체를 안 붙임
 }
 
@@ -62,7 +67,8 @@ def _avatar_tags(glasses: str, bangs: bool, hair_length: str, hair_color: str) -
     if glasses_tag:
         tags.append(glasses_tag)
 
-    tags.append("blunt bangs" if bangs else "no bangs")
+    # "no bangs"는 Danbooru 태그가 아님 -> 앞머리 없이 이마가 보이는 "forehead"(44,455건)로 (patch 13)
+    tags.append("blunt bangs" if bangs else "forehead")
 
     length_tag = {"short": "short hair", "medium": "medium hair", "long": "long hair"}.get(
         hair_length, "medium hair"
@@ -165,16 +171,42 @@ def ensure_solo_person(positive: str, negative: str, who, gender) -> tuple[str, 
 # --- 이미지 품질 보정 (2026-10-09 ComfyUI 시드 고정 비교 테스트 결과 반영) ---
 # Illustrious는 품질 태그를 맨 앞에 두는 게 권장됨. LLM이 이미 같은 태그를 넣었으면 중복 제거.
 QUALITY_PREFIX = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
-_QUALITY_TAGS = {t.strip() for t in QUALITY_PREFIX.split(",")}
+_QUALITY_TAGS = {t.strip() for t in QUALITY_PREFIX.split(",")} | {"good quality", "high quality", "highres"}
+
+
+def _quality_prefix() -> str:
+    """
+    patch 13: .env IMAGE_QUALITY_PREFIX로 바꿔볼 수 있게 함 (기본값은 그대로).
+    Illustrious 공식 모델 카드의 품질 태그 목록은 worst/bad/average/good/best quality, masterpiece라서
+    amazing quality, very aesthetic은 목록에 없음. 빼면 6토큰 줄어서 75토큰 안에 들어가기 쉬움 -> 시드 고정 비교 후 결정.
+    예) IMAGE_QUALITY_PREFIX=masterpiece, best quality, absurdres
+    """
+    return os.environ.get("IMAGE_QUALITY_PREFIX", "").strip() or QUALITY_PREFIX
 
 # negative는 길게 쌓지 않고 핵심만 쓴다 (긴 목록 vs 짧은 목록을 같은 시드로 비교했을 때 차이가 없었음).
 # 이미지 프롬프트 LLM이 내놓는 negative(고정 긴 문자열)는 쓰지 않고 이걸로 대체한다.
 # 인원/성별 negative(girl 계열 등)는 계정/구도에 따라 아래 보정 함수들이 따로 덧붙임.
+# patch 13: Illustrious 공식 모델 카드(v0.1)의 negative 예시에 있는 lowres, multiple views, comic 추가
+#   (multiple views/comic: 한 장에 여러 컷/만화 칸이 생기는 것 방지)
 IMAGE_NEGATIVE_BASE = (
     "(text:1.3), (signboard:1.3), (letters:1.2), keyboard, monitor, "
-    "worst quality, low quality, bad anatomy, bad hands, extra fingers, blurry, watermark, extra people, "
+    "worst quality, low quality, lowres, bad anatomy, bad hands, extra fingers, blurry, watermark, extra people, "
+    "multiple views, comic, "
     "photorealistic, realistic, 3d, cyberpunk, sci-fi, futuristic, neon lights, glowing, oversaturated"
 )
+
+# patch 13: 나이 보정. 성별 보정 단계에서 'young adult man'이 지워지고(Danbooru 태그도 아님) 1boy만 남으면
+# 어린 소년처럼 그려지는 경우가 있었음. Illustrious는 학습 데이터 특성상 어려 보이게 나오는 경향이 있어서
+# 커뮤니티 가이드가 negative에 child, aged down을 권함 (완벽하진 않음). 자녀/아이가 같이 있으면 넣지 않음.
+_AGE_NEGATIVE = "child, aged down"
+_CHILD_WORDS = ("자녀", "아이", "딸", "아들", "조카", "아기", "애기")
+
+# patch 13: 구도 태그. 공식 모델 카드가 upper body / cowboy shot / full body 같은 구도 태그를 쓰라고 권함.
+# 구도가 없으면 전신+복잡한 자세가 나오기 쉬워서(헬스장: 벤치에 엎드리고 바벨이 떠 있음) 장면에 맞춰 하나만 붙임.
+_COMPOSITION_TAGS = ("upper body", "cowboy shot", "full body", "portrait", "close-up")
+_TABLE_SCENE = {"eating", "drinking", "food", "table", "studying", "reading", "talking", "cup", "bowl",
+                "chopsticks", "writing", "desk", "laptop", "notebook"}
+_FULL_BODY_SCENE = {"walking", "running", "jogging", "riding bicycle", "dancing", "hiking", "skiing", "swimming"}
 
 # LoRA 화풍을 확실히 끌어내는 태그. 품질 태그 바로 뒤(프롬프트 앞쪽)에 둔다.
 # 2026-10 테스트: 트리거(gamjeong style)가 맨 끝에 있고 컴퓨터 태그가 많아 SF/네온풍으로 나옴.
@@ -316,6 +348,26 @@ def _upload_to_storage(image_bytes: bytes) -> str:
     return supabase.storage.from_(STORAGE_BUCKET).get_public_url(filename)
 
 
+def _composition_tag(body: str, solo: bool) -> str | None:
+    """장면 태그를 보고 구도 태그 하나를 고름. 이미 구도 태그가 있으면 None (IMAGE_COMPOSITION_TAG=false면 끔)"""
+    if os.environ.get("IMAGE_COMPOSITION_TAG", "true").strip().lower() in ("0", "false", "no", "off"):
+        return None
+    tags = {t.strip().lower() for t in body.split(",")}
+    if tags & set(_COMPOSITION_TAGS):
+        return None
+    if tags & _TABLE_SCENE:
+        return "upper body"
+    if tags & _FULL_BODY_SCENE:
+        return "full body"
+    return "cowboy shot" if solo else "upper body"
+
+
+def _needs_age_negative(who) -> bool:
+    items = who if isinstance(who, list) else [who or ""]
+    text = " ".join(str(x) for x in items)
+    return not any(w in text for w in _CHILD_WORDS)
+
+
 def generate_diary_image(
     diary_text: str,
     top_emotion: str,
@@ -348,7 +400,13 @@ def generate_diary_image(
     )
     # 글자/간판을 부르는 태그 정리 + negative는 LLM이 준 긴 문자열 대신 핵심만 쓰는 고정값 사용
     positive_body, tag_changes = sanitize_image_tags(prompt_result["positive"])
+    # patch 13: Danbooru 태그 기준으로 정리 (별칭/복수형 -> 정식 태그, 모르는 태그/게시물 적은 태그는 버림)
+    if danbooru_tags.enabled():
+        positive_body, dropped, renamed = danbooru_tags.filter_tags(positive_body)
+        print(f"  [태그 사전] 바꿈: {', '.join(renamed) or '없음'} / 버림: {', '.join(dropped) or '없음'}")
     negative = IMAGE_NEGATIVE_BASE
+    if _needs_age_negative(who):
+        negative = f"{negative}, {_AGE_NEGATIVE}"
     positive_body_before = positive_body
     # 인원/성별은 앱 입력(Who)과 계정 성별로 서버가 확정한다 ("나"는 항상 포함). 판단 불가면 예전 보정 체인 사용.
     cast = build_cast(who, gender)
@@ -359,7 +417,8 @@ def generate_diary_image(
         # patch 12: 혼자 그림이면 아바타 태그(안경/앞머리/머리)를 인물 태그 바로 뒤로 (앞쪽 태그일수록 영향이 큼).
         # 여러 명일 땐 모두에게 같은 머리/안경이 적용될 수 있어서 예전처럼 맨 끝에 둠.
         avatar_front = cast.solo
-        head = cast.tags + ([avatar] if avatar_front else [])
+        comp = _composition_tag(rest, cast.solo)
+        head = cast.tags + ([avatar] if avatar_front else []) + ([comp] if comp else [])
         positive_body = ", ".join(head + ([rest] if rest else []))
         if cast.negative:
             negative = f"{negative}, {cast.negative}"
@@ -371,7 +430,10 @@ def generate_diary_image(
         positive_body, negative = apply_gender(positive_body, negative, gender)
         positive_body_gender = positive_body
         positive_body, negative = ensure_male_group(positive_body, negative, gender)
-    positive = f"{QUALITY_PREFIX}, {STYLE_PREFIX}, {positive_body}" + ("" if avatar_front else f", {avatar}")
+        comp = _composition_tag(positive_body, solo=False)
+        if comp:
+            positive_body = f"{positive_body}, {comp}"
+    positive = f"{_quality_prefix()}, {STYLE_PREFIX}, {positive_body}" + ("" if avatar_front else f", {avatar}")
     print(f"  [태그 정리] {', '.join(tag_changes) if tag_changes else '변경 없음'}")
     print(
         f"  [성별 반영] 계정 성별={gender!r} -> {normalize_gender(gender)}, "

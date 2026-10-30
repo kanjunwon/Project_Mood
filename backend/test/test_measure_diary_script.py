@@ -62,8 +62,8 @@ def test_summarize_and_render():
     s2["job_total_sec"] = 70.0
     md = m.render_markdown({"started_at": "t", "user_id": 1, "save_db": False, "emotion": None,
                             "jobs": [s1, s2], "skipped": []})
-    assert "| base | 1 | 45.0 / 45.0 | 0 / 1 | 20.2 / 20.2 | 1 | 2 | 0/1 | 0/1/0 | 0 | 1/1 | 0/1 | 18.0 |" in md
-    assert "| emotion_word | 1 | 70.0 / 70.0 | 1 / 1 | 20.2 / 20.2 | 0 | 1 | 0/1 | 0/0/0 | 0 | 1/1 | 1/1 | 18.0 |" in md
+    assert "| base | 1 | 45.0 / 45.0 | 0 / 1 | 20.2 / 20.2 | 1 | 2 | 0/1 | 0/1/0/0 | 0 | 1/1 | 0/1 | 18.0 |" in md
+    assert "| emotion_word | 1 | 70.0 / 70.0 | 1 / 1 | 20.2 / 20.2 | 0 | 1 | 0/1 | 0/0/0/0 | 0 | 1/1 | 1/1 | 18.0 |" in md
     assert "| 식사시간대 지어냄 | 1 | 0 |" in md
     assert "가중치가 뒤집음 | 1 |" in md
 

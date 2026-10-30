@@ -348,7 +348,7 @@ def test_scene_tag_cleaning():
 
 def test_parse_scene_filters_and_limits():
     raw = '잡담 {"place": "Exam Hall", "action": "taking exam", "objects": ["desk", "October 16th", "pencil", "eraser", "ruler"]} 끝'
-    assert ips.parse_scene(raw) == ["exam hall", "taking exam", "desk", "pencil"]  # objects는 앞 3개 중 통과한 것만
+    assert ips.parse_scene(raw) == ["exam hall", "taking exam", "desk"]  # patch 13: objects는 앞 2개 중 통과한 것만
     assert ips.parse_scene("no json") is None
     assert ips.parse_scene('{"place": "Yonsinnae 10th street"}') is None
 
@@ -382,3 +382,34 @@ def test_hybrid_mock_mode_never_calls_llm(monkeypatch):
     monkeypatch.setattr(llama_service, "_generate_once", lambda *a, **k: pytest.fail("LLM 호출되면 안 됨"))
     r = ips.translate_to_image_prompt("카페에서 공부했다", "혼자", "뿌듯한", "카페", "오후 2시", what="공부")
     assert r["positive"].startswith("1girl, solo")
+
+
+
+# ---------- patch 13: 템플릿 장소/시간 ----------
+
+def test_restaurant_names_with_jip_are_not_home():
+    from app.services.image_prompt_template import _find_place
+    assert _find_place("고깃집", "")[1] == "restaurant, yakiniku, grill, indoors"
+    assert _find_place("동네 중국집", "")[1] == "restaurant, chinese food, indoors"
+    assert _find_place("곱창집", "")[1] == "restaurant, indoors"       # 사전에 없는 'OO집'은 식당
+    assert _find_place("우리 집", "")[1] == "home, living room, indoors"
+    assert _find_place("집", "")[1] == "home, living room, indoors"
+    assert _find_place("친구집", "")[1] == "friend's house, living room, indoors"
+    assert _find_place("할머니집", "")[1] == "home, living room, indoors"
+
+
+def test_indoor_evening_has_no_sunset():
+    r = build_template_prompt("운동했다.", "혼자", "신나는", "헬스장", "10월 30일 금요일 오후 6시", gender="남성")
+    assert "evening" in r["positive"] and "sunset" not in r["positive"]
+    r = build_template_prompt("산책했다.", "혼자", "상쾌한", "공원", "10월 30일 금요일 오후 6시", gender="남성")
+    assert "sunset" in r["positive"]
+
+
+def test_scene_examples_use_danbooru_tags():
+    from app.services import danbooru_tags as dt
+    for _, ex in ips._SCENE_EXAMPLES:
+        for tag in [ex["place"], ex["action"], *ex["objects"]]:
+            if tag in dt.KEEP_TAGS:
+                continue
+            assert dt.canonical(tag)[1] >= 100, tag
+        assert len(ex["objects"]) <= ips.MAX_SCENE_OBJECTS

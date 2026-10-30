@@ -126,8 +126,9 @@ def test_generate_uses_quality_prefix_clean_tags_and_short_negative(monkeypatch)
     assert "karaoke room" in pos and "colorful lighting" in pos
     assert "(4boys:1.2), male focus" in pos  # 나 + 친구 3명
     assert "3boys" not in pos
-    # 아바타 태그는 맨 끝
-    assert pos.endswith("horn-rimmed glasses, no bangs, short hair, black hair")
+    # 아바타 태그는 맨 끝 (patch 13: 뿔테/앞머리 없음을 Danbooru 정식 태그로)
+    assert pos.endswith("black-framed eyewear, forehead, short hair, black hair")
+    assert "upper body" in pos  # patch 13: 여러 명이면 구도 태그 upper body
     neg = cap["negative"]
     assert neg.startswith(IMAGE_NEGATIVE_BASE)
     assert "(girl:1.3), (1girl:1.3), (2girls:1.2), (3girls:1.2)" in neg
@@ -196,3 +197,81 @@ def test_workflow_node_ids_used_by_service_unchanged():
     assert w[sd3_service.POSITIVE_PROMPT_NODE_ID]["class_type"] == "CLIPTextEncode"
     assert w[sd3_service.NEGATIVE_PROMPT_NODE_ID]["class_type"] == "CLIPTextEncode"
     assert w[sd3_service.SEED_NODE_ID]["class_type"] == "KSampler"
+
+
+
+# ---------- patch 13: Danbooru 태그 정리 / 구도 / 나이 ----------
+
+from app.services import danbooru_tags as dt
+
+
+def test_danbooru_filter_fixes_gym_log_tags():
+    # 2026-10-30 헬스장 로그의 장면 태그
+    out, dropped, changed = dt.filter_tags(
+        "smile, open mouth, excited expression, energetic, warm lighting, exercising, sportswear, gym, indoors, "
+        "evening, working out, weight bench, dumbbells")
+    assert out == "smile, open mouth, excited, exercising, sportswear, gym, indoors, evening, dumbbell"
+    assert "weight bench" in dropped  # 게시물 34건이라 데이터 파일(100건 이상)에 없음: 모델이 거의 모르는 태그
+    assert "dumbbells->dumbbell" in changed and "working out->exercising" in changed
+
+
+def test_danbooru_filter_keeps_weights_keep_tags_and_escapes_parens(monkeypatch):
+    out, _, _ = dt.filter_tags("(1boy:1.3), karaoke room, colorful lighting, mother, bar (place), grill house")
+    assert out == "(1boy:1.3), karaoke room, colorful lighting, mother, bar \\(place\\), restaurant, grill"
+    monkeypatch.setenv("IMAGE_TAG_MIN_POSTS", "2000")
+    out, dropped, _ = dt.filter_tags("gym, dumbbell")
+    assert out == "gym" and dropped == ["dumbbell(1893건)"]
+
+
+def test_danbooru_filter_can_be_turned_off(monkeypatch):
+    monkeypatch.setenv("IMAGE_TAG_FILTER", "false")
+    cap = _run_generate(monkeypatch, "1boy, solo, gym, weight bench, dumbbells", "x", "남성", ["혼자"])
+    assert "weight bench" in cap["positive"] and "dumbbells" in cap["positive"]
+
+
+def test_generate_solo_gym_prompt_patch13(monkeypatch):
+    cap = _run_generate(monkeypatch, "1boy, solo, young adult man, smile, exercising, gym, indoors, working out, "
+                        "weight bench, dumbbells, gamjeong style", "x", "남성", ["혼자"])
+    pos, neg = cap["positive"], cap["negative"]
+    assert "(1boy:1.3), (male focus:1.2), solo, black-framed eyewear, forehead, short hair, black hair, cowboy shot" in pos
+    assert "weight bench" not in pos and "dumbbell" in pos and "working out" not in pos
+    assert "child, aged down" in neg and "multiple views, comic" in neg
+
+
+def test_composition_tag_rules(monkeypatch):
+    assert sd3_service._composition_tag("eating, noodles, bowl", solo=True) == "upper body"
+    assert sd3_service._composition_tag("walking, park", solo=True) == "full body"
+    assert sd3_service._composition_tag("gym, exercising", solo=True) == "cowboy shot"
+    assert sd3_service._composition_tag("gym, exercising", solo=False) == "upper body"
+    assert sd3_service._composition_tag("full body, park", solo=True) is None  # 이미 있으면 안 붙임
+    monkeypatch.setenv("IMAGE_COMPOSITION_TAG", "false")
+    assert sd3_service._composition_tag("gym", solo=True) is None
+
+
+def test_age_negative_skipped_when_child_is_in_picture():
+    assert sd3_service._needs_age_negative(["혼자"]) is True
+    assert sd3_service._needs_age_negative("친구,3명") is True
+    assert sd3_service._needs_age_negative(["자녀"]) is False
+    assert sd3_service._needs_age_negative("엄마,아들") is False
+
+
+def test_avatar_tags_are_danbooru_tags():
+    tags = sd3_service._avatar_tags("round", False, "long", "갈색")
+    assert tags == "round eyewear, forehead, long hair, brown hair"
+    for t in tags.split(", "):
+        assert dt.canonical(t)[0] == t, t
+
+
+
+def test_indoor_scene_drops_wind_and_sunset():
+    out, dropped, _ = dt.filter_tags("smile, gentle breeze, restaurant, indoors, sunset, night")
+    assert out == "smile, restaurant, indoors, night"
+    assert "wind(실내)" in dropped and "sunset(실내)" in dropped
+    assert dt.filter_tags("smile, gentle breeze, park, outdoors")[0] == "smile, wind, park, outdoors"
+
+
+def test_quality_prefix_env_override(monkeypatch):
+    monkeypatch.setenv("IMAGE_QUALITY_PREFIX", "masterpiece, best quality, absurdres")
+    cap = _run_generate(monkeypatch, "1boy, solo, cafe", "x", "남성", ["혼자"])
+    assert cap["positive"].startswith("masterpiece, best quality, absurdres, gamjeong style")
+    assert "amazing quality" not in cap["positive"]

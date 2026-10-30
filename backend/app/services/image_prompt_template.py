@@ -143,6 +143,19 @@ PLACE_DICT = {
     "도서관": "library, bookshelves, indoors",
     "카페": "cafe, coffee shop, indoors",
     "식당": "restaurant, indoors",
+    # patch 13: '고깃집/중국집' 같은 가게 이름이 '집' 때문에 home, living room으로 잡히던 문제 -> 가게 키워드를 먼저 둠
+    "고깃집": "restaurant, yakiniku, grill, indoors",
+    "고기집": "restaurant, yakiniku, grill, indoors",
+    "삼겹살집": "restaurant, yakiniku, grill, indoors",
+    "갈비집": "restaurant, yakiniku, grill, indoors",
+    "중국집": "restaurant, chinese food, indoors",
+    "치킨집": "restaurant, fried chicken, indoors",
+    "술집": "izakaya, indoors",
+    "포차": "izakaya, indoors",
+    "포장마차": "izakaya, indoors",
+    "빵집": "bakery, indoors",
+    "친구집": "friend's house, living room, indoors",
+    "우리집": "home, living room, indoors",
     "음식점": "restaurant, indoors",
     "공원": "park, trees, outdoors",
     "한강": "han river park, riverside, outdoors",
@@ -248,16 +261,29 @@ def _count_tag(n: int, gender: str) -> str:
     return f"{n}{word}" if n == 1 else f"{n}{word}s"
 
 
+# '○○집'인데 집(home)이 아닌 경우를 가려내기 위한 앞말 목록. 여기 없는 '곱창집', '국밥집', '맛집' 같은 건 식당으로 봄
+_HOME_PREFIXES = ("우리", "내", "저희", "친구", "친구네", "자취", "할머니", "할아버지", "이모", "삼촌", "고모", "외삼촌",
+                  "큰", "작은", "본", "부모님", "언니", "누나", "오빠", "형", "동생", "사촌", "남친", "여친", "애인")
+
+
 def _find_place(where: str, diary_text: str) -> tuple[str | None, str | None]:
     keys = sorted(PLACE_DICT, key=len, reverse=True)
     for key in keys:
         if key in (where or ""):
+            if key == "집":
+                m = re.search(r"([가-힣]+)\s*집", where or "")
+                if m and not m.group(1).endswith(_HOME_PREFIXES):
+                    return "식당", PLACE_DICT["식당"]  # 곱창집, 국밥집, 맛집 ... (patch 13)
             return key, PLACE_DICT[key]
     # 본문에서 찾을 땐 한 글자 키워드(집/방/산)는 제외: "산책", "방금", "집중" 같은 오탐이 너무 많음
     for key in keys:
         if len(key) >= 2 and key in (diary_text or ""):
             return key, PLACE_DICT[key]
     return None, None
+
+
+# _time_tags가 낼 수 있는 태그 (image_prompt_service._merge_scene이 순서 정할 때 씀)
+TIME_TAG_WORDS = ("night", "dark sky", "morning", "sunlight", "daytime", "afternoon", "evening", "sunset")
 
 
 def _time_tags(when: str) -> str | None:
@@ -368,6 +394,8 @@ def build_template_prompt(diary_text: str, who, emotion: str, where: str, when: 
     if place_tag:
         tags.append(place_tag)
     time_tag = _time_tags(when)
+    if time_tag == "evening, sunset" and place_tag and "indoors" in place_tag:
+        time_tag = "evening"  # patch 13: 실내(헬스장 등)에 노을이 그려지던 문제
     if time_tag:
         tags.append(time_tag)
 

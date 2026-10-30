@@ -44,7 +44,7 @@ def test_attempt_details_recorded_with_reasons(fake_llm):
     assert details[0]["output_tokens"] == 120 and details[0]["tokens_per_sec"] == 18.0
     assert details[0]["text"] == WITH_ALCOHOL
     assert timings["diary_attempts"] == 2 and timings["diary_fallback"] is False
-    assert [c["temperature"] for c in calls] == pytest.approx([0.6, 0.75])  # patch 12: 재시도마다 온도를 올림
+    assert [c["temperature"] for c in calls] == pytest.approx([0.45, 0.55])  # patch 13: 0.45부터 조금씩 올림
     assert calls[0]["no_repeat_ngram_size"] == 4
     assert "맥주" in calls[0]["bad_words"] and "아침" in calls[0]["bad_words"]
 
@@ -203,3 +203,62 @@ def test_bad_words_ids_with_fake_tokenizer():
 
     ids = ls._bad_words_ids(Tok(), ["아침"])
     assert [ord("아"), ord("침")] in ids and [ord(" "), ord("아"), ord("침")] in ids
+
+
+
+# ---------- patch 13: 음식 지어내기 ----------
+
+JJAMPPONG_CTX = ls.expand_context("혼자 짬뽕 먹음 맛있어서 10월 30일 금요일 오후 12시 중국집")
+
+
+def test_invented_food_is_rejected():
+    text = "오늘은 중국집에서 짬뽕을 먹었다. 새우튀김도 하나 같이 시켜서 먹었다. 국물이 얼큰해서 땀이 좀 났다. 기분이 좋았다."
+    ok, reasons, _ = ls.validate_diary(text, JJAMPPONG_CTX)
+    assert not ok and "음식 지어냄(새우튀김)" in reasons
+
+
+def test_food_inside_other_words_is_not_flagged():
+    # '그만두다'의 만두, '물고기'의 고기, '~이라면'의 라면은 음식이 아님 (앞 글자가 한글이면 건너뜀)
+    for text in ("힘들어서 그만두고 싶었다.", "어항 속 물고기를 한참 봤다.", "이번이 마지막이라면 좋겠다."):
+        assert ls.has_invented_food(text, "혼자 산책") is None, text
+
+
+def test_food_said_by_user_or_implied_by_place_is_allowed():
+    assert ls.has_invented_food("짬뽕 국물이 얼큰했다.", JJAMPPONG_CTX) is None
+    assert ls.has_invented_food("커피를 한 잔 시켰다.", "혼자 과제 카페") is None          # 카페 -> 커피
+    assert ls.has_invented_food("케이크에 초를 꽂았다.", "친구 생일 축하 친구네 집") is None  # 생일 -> 케이크
+    assert ls.has_invented_food("탕수육도 시켰다.", JJAMPPONG_CTX) == "탕수육"              # 중국집이어도 안 됨
+
+
+def test_drop_invented_food_sentence_keeps_the_rest():
+    text = "오늘은 중국집에서 짬뽕을 먹었다. 새우 튀김도 하나 시켰다. 국물이 얼큰했다. 기분이 좋았다."
+    assert ls._drop_invented_sentences(text, JJAMPPONG_CTX) == "오늘은 중국집에서 짬뽕을 먹었다. 국물이 얼큰했다. 기분이 좋았다."
+
+
+def test_food_words_are_blocked_at_generation_except_ambiguous_ones():
+    block = ls.words_to_block(JJAMPPONG_CTX)
+    assert "새우튀김" in block and "탕수육" in block and "짬뽕" not in block
+    assert "라면" not in block and "만두" not in block  # 다른 말과 토큰이 겹칠 수 있어서 검증기에서만 잡음
+
+
+def test_bad_words_include_josa_forms_for_mealtime_words():
+    class Tok:
+        def __call__(self, text, add_special_tokens=False):
+            return {"input_ids": [ord(c) for c in text]}
+
+        def decode(self, ids):
+            return "".join(chr(i) for i in ids)
+
+    ids = ls._bad_words_ids(Tok(), ["점심", "탕수육"])
+    assert [ord(c) for c in " 점심으로"] in ids and [ord(c) for c in "점심에"] in ids
+    assert [ord(c) for c in " 탕수육으로"] not in ids  # 조사 형태는 식사시간대/술 단어만 (목록이 너무 커지지 않게)
+
+
+def test_app_style_prompt_rules_patch13():
+    p = ls.SYSTEM_PREAMBLE_APP
+    assert "3~4문장, 90~150자" in p and "4~5문장" not in p
+    assert "생일이면 케이크" not in p and "답변에 없는 음식·메뉴·음료·물건" in p
+    assert "케이크" not in ls.FEWSHOT_APP_STYLE and "과자" not in ls.FEWSHOT_APP_STYLE
+    assert "짜장면" in ls.FEWSHOT_APP_STYLE
+    assert ls.build_prompt(CONTENT).rstrip().endswith("Assistant:")
+    assert "절대 지어내지 말 것" in ls.build_prompt(CONTENT)
